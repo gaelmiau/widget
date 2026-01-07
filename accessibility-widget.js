@@ -41,6 +41,9 @@
             this.highlightEl = null;
             this.readingLineElement = null;
 
+            // ========== Regleta de Lectura ==========
+            this.readingRulerListener = null; // Guardar referencia al listener
+
             // ========== Idioma ==========
             this.defaultLang = 'es-ES';
 
@@ -1101,12 +1104,12 @@
                 }
                 
                 // Rastrear movimiento del mouse para posicionar la regleta
-                const updateRulerPosition = (e) => {
+                // Guardar la función en la clase para poder removerla después
+                this.readingRulerListener = (e) => {
                     ruler.style.top = e.clientY + 'px';
                 };
                 
-                document.addEventListener('mousemove', updateRulerPosition);
-                ruler.dataset.listenerFunction = updateRulerPosition;
+                document.addEventListener('mousemove', this.readingRulerListener);
                 
                 if (btn) {
                     btn.textContent = 'Desactivar Regleta de Lectura';
@@ -1115,10 +1118,14 @@
             } else {
                 // Remover regleta
                 const ruler = document.getElementById('a11y-reading-ruler');
+                
+                // Remover el listener usando la referencia guardada en la clase
+                if (this.readingRulerListener) {
+                    document.removeEventListener('mousemove', this.readingRulerListener);
+                    this.readingRulerListener = null;
+                }
+                
                 if (ruler) {
-                    if (ruler.dataset.listenerFunction) {
-                        document.removeEventListener('mousemove', ruler.dataset.listenerFunction);
-                    }
                     ruler.remove();
                 }
                 
