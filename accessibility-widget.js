@@ -16,6 +16,7 @@
             this.isOpen = false;
             this.isSpeaking = false;
             this.sectionReadingMode = false; // NUEVO: controla si el nav con flechas está activo
+            this.numberedVoiceMode = false; // NUEVO: modo de comandos por voz con números
 
             // ========== Preferencias ==========
             this.currentTheme = 'default';
@@ -200,6 +201,15 @@
                                 </div>
                             </section>
 
+                            <!-- Comandos de Voz por Números -->
+                            <section class="a11y-section">
+                                <h3>Comandos por Voz</h3>
+                                <p class="a11y-help-text">Activa este modo para numerar elementos y controlarlos por voz. Dice un número para leer o interactuar con ese elemento.</p>
+                                <div class="a11y-tts-controls">
+                                    <button id="a11y-numbered-voice-toggle" class="a11y-btn-primary" aria-label="Activar comandos de voz por números" title="Activa números en elementos para control por voz" data-tooltip="Comandos por voz">Activar Comandos por Voz</button>
+                                </div>
+                            </section>
+
                             <!-- Reset -->
                             <section class="a11y-section">
                                 <button id="a11y-reset" class="a11y-btn-reset" aria-label="Restablecer" title="Restablece opciones" data-tooltip="Restablecer">Restablecer Todo</button>
@@ -294,6 +304,7 @@
             const readPage = document.getElementById('a11y-read-page');
             const stopBtn = document.getElementById('a11y-stop-reading');
             const sectionReadingToggle = document.getElementById('a11y-section-reading-toggle');
+            const numberedVoiceToggle = document.getElementById('a11y-numbered-voice-toggle');
             const resetBtn = document.getElementById('a11y-reset');
             const dyslexiaToggle = document.getElementById('a11y-dyslexia-toggle');
             if (dyslexiaToggle) dyslexiaToggle.addEventListener('click', () => this.toggleDyslexiaMode());
@@ -302,6 +313,7 @@
             if (readPage) readPage.addEventListener('click', () => this.readPage());
             if (stopBtn) stopBtn.addEventListener('click', () => this.stopReading());
             if (sectionReadingToggle) sectionReadingToggle.addEventListener('click', () => this.toggleSectionReading());
+            if (numberedVoiceToggle) numberedVoiceToggle.addEventListener('click', () => this.toggleNumberedVoiceMode());
             if (resetBtn) resetBtn.addEventListener('click', () => this.resetAll());
 
             // Slider de velocidad
@@ -609,11 +621,18 @@
             this.setCursorSize('default');
             this.setReadingRate(1);
             this.sectionReadingMode = false;
+            this.numberedVoiceMode = false;
             this.stopReading();
             const btn = document.getElementById('a11y-section-reading-toggle');
             if (btn) {
                 btn.textContent = 'Iniciar Lectura por Secciones';
                 btn.classList.remove('active');
+            }
+            const numBtn = document.getElementById('a11y-numbered-voice-toggle');
+            if (numBtn) {
+                numBtn.textContent = 'Activar Comandos por Voz';
+                numBtn.classList.remove('active');
+                this.removeNumberedLabels();
             }
             localStorage.removeItem('a11y-preferences');
             alert('Configuración restablecida.');
@@ -684,6 +703,175 @@
             if (stopBtn) stopBtn.disabled = true;
             this.hideHighlight();
             this.hideReadingLine();
+        }
+
+        // ==================== COMANDOS DE VOZ POR NÚMEROS ====================
+        toggleNumberedVoiceMode() {
+            this.numberedVoiceMode = !this.numberedVoiceMode;
+            const btn = document.getElementById('a11y-numbered-voice-toggle');
+
+            if (this.numberedVoiceMode) {
+                // Activar modo
+                this.buildReadableElementsList();
+                this.createNumberedLabels();
+                btn.textContent = 'Desactivar Comandos por Voz';
+                btn.classList.add('active');
+                this.startNumberedVoiceRecognition();
+                this.autoClosePanel();
+            } else {
+                // Desactivar modo
+                this.removeNumberedLabels();
+                btn.textContent = 'Activar Comandos por Voz';
+                btn.classList.remove('active');
+                this.stopNumberedVoiceRecognition();
+            }
+        }
+
+        createNumberedLabels() {
+            // El 0 es el botón del widget
+            const toggleBtn = document.getElementById('a11y-toggle-btn');
+            if (toggleBtn) {
+                const badge = document.createElement('div');
+                badge.className = 'a11y-number-badge';
+                badge.textContent = '0';
+                badge.setAttribute('data-a11y-number', '0');
+                toggleBtn.appendChild(badge);
+            }
+
+            // Enumerar elementos legibles
+            let num = 1;
+            this.readableElements.forEach(el => {
+                if (!el.closest || !el.closest('#accessibility-widget')) {
+                    const badge = document.createElement('div');
+                    badge.className = 'a11y-number-badge';
+                    badge.textContent = num;
+                    badge.setAttribute('data-a11y-number', num);
+                    el.style.position = 'relative';
+                    el.appendChild(badge);
+                    el.setAttribute('data-a11y-index', num);
+                    num++;
+                }
+            });
+
+            // Guardar el total de elementos
+            this.totalNumberedElements = num;
+        }
+
+        removeNumberedLabels() {
+            document.querySelectorAll('.a11y-number-badge').forEach(badge => {
+                badge.remove();
+            });
+            document.querySelectorAll('[data-a11y-index]').forEach(el => {
+                el.removeAttribute('data-a11y-index');
+                el.style.position = '';
+            });
+        }
+
+        startNumberedVoiceRecognition() {
+            if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+                alert('Tu navegador no soporta reconocimiento de voz.');
+                return;
+            }
+
+            const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            try {
+                this.numberedVoiceRecog = new Recognition();
+                this.numberedVoiceRecog.lang = this.defaultLang || 'es-ES';
+                this.numberedVoiceRecog.continuous = true;
+                this.numberedVoiceRecog.interimResults = true;
+
+                this.numberedVoiceRecog.onresult = (event) => {
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        const transcript = event.results[i][0].transcript.toLowerCase().trim();
+                        
+                        // Palabras clave para desactivar
+                        if (transcript.includes('desactivar') || transcript.includes('salir')) {
+                            this.toggleNumberedVoiceMode();
+                            return;
+                        }
+
+                        // Buscar números pronunciados
+                        const numberWords = {
+                            'cero': 0, 'zero': 0,
+                            'uno': 1, 'one': 1,
+                            'dos': 2, 'two': 2,
+                            'tres': 3, 'three': 3,
+                            'cuatro': 4, 'four': 4,
+                            'cinco': 5, 'five': 5,
+                            'seis': 6, 'six': 6,
+                            'siete': 7, 'seven': 7,
+                            'ocho': 8, 'eight': 8,
+                            'nueve': 9, 'nine': 9,
+                            'diez': 10, 'ten': 10
+                        };
+
+                        // Buscar números directos (0-9)
+                        for (let num = 0; num < this.totalNumberedElements; num++) {
+                            if (transcript.includes(num.toString()) || transcript.includes(numberWords[num.toString()])) {
+                                this.handleNumberedVoiceCommand(num);
+                                return;
+                            }
+                        }
+
+                        // Buscar palabras de números
+                        for (const [word, num] of Object.entries(numberWords)) {
+                            if (transcript.includes(word) && num < this.totalNumberedElements) {
+                                this.handleNumberedVoiceCommand(num);
+                                return;
+                            }
+                        }
+                    }
+                };
+
+                this.numberedVoiceRecog.onerror = (e) => {
+                    console.warn('Error STT numerado:', e.error);
+                };
+
+                this.numberedVoiceRecog.start();
+            } catch (e) {
+                console.warn('No se pudo iniciar reconocimiento numerado:', e);
+            }
+        }
+
+        stopNumberedVoiceRecognition() {
+            if (this.numberedVoiceRecog) {
+                try {
+                    this.numberedVoiceRecog.abort();
+                } catch (e) { /* ignore */ }
+            }
+        }
+
+        handleNumberedVoiceCommand(num) {
+            if (num === 0) {
+                // Número 0: alternar panel
+                this.togglePanel();
+                return;
+            }
+
+            // Buscar el elemento con ese índice
+            const element = document.querySelector(`[data-a11y-index="${num}"]`);
+            if (!element) return;
+
+            const tag = element.tagName.toLowerCase();
+            
+            // Si es interactivo (botón, enlace), hacer click
+            if (['button', 'a'].includes(tag) || element.getAttribute('role') === 'button' || element.onclick) {
+                element.click();
+                return;
+            }
+
+            // Si es un elemento input, select, etc
+            if (['input', 'select', 'textarea'].includes(tag)) {
+                element.focus();
+                return;
+            }
+
+            // Si no es interactivo, leer su contenido
+            const elemLang = element.dataset?.a11yLang || element.lang || this.findClosestLang(element) || this.defaultLang;
+            const text = element.textContent.trim();
+            if (text) {
+                this.speak(text, elemLang);
+            }
         }
 
         // ==================== NAVEGACIÓN ====================

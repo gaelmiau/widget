@@ -9,6 +9,7 @@ Este README explica cómo integrar y usar el `AccessibilityWidget` en cualquier 
 - Qué lee y qué no lee el widget
 - Controles de lectura (TTS)
 - Modo lectura por secciones, Bionic y Dislexia
+- Comandos de voz por números
 - Preferencias y persistencia
 - Compatibilidad y resolución de problemas
 
@@ -110,6 +111,46 @@ El widget utiliza la Web Speech API del navegador (`speechSynthesis`). La dispon
 - **Modo Dislexia**: cambia la tipografía a OpenDyslexic, aumenta interletraje y line-height para mejorar la legibilidad.
 
 Todos estos modos se activan/desactivan desde el panel y están diseñados para ser accesibles por teclado.
+
+## Comandos de voz por números
+
+Este modo enumera todos los elementos de la página que pueden leerse y permite controlarlos por voz:
+
+**Cómo funciona:**
+
+1. Activa "Activar Comandos por Voz" desde el panel.
+2. Se mostrarán pequeños números (badges) al lado de cada elemento legible/interactivo.
+3. El número **0** corresponde al botón del widget (para abrir/cerrar el panel).
+4. Dice el número en voz alta y el widget:
+   - **Leerá el contenido** si es un párrafo, título, etc.
+   - **Activará un botón/enlace** si es un elemento interactivo.
+   - **Abrirá/cerrará modales** o elementos interactivos.
+
+**Comandos disponibles:**
+
+- **Números (0-9, diez, once, etc.)**: Ejecuta la acción del elemento numerado.
+- **"Desactivar"** o **"Salir"**: Desactiva el modo de comandos por voz.
+
+**Ejemplo en HTML:**
+
+```html
+<h2>Mi Sección</h2>
+<p>Este párrafo se podrá leer diciendo el número que aparezca a su lado.</p>
+<button>Aceptar</button>
+
+<!-- Al activar "Comandos por Voz", verás:
+  0 - Botón del widget
+  1 - h2: Mi Sección
+  2 - p: Contenido del párrafo
+  3 - button: Aceptar
+-->
+```
+
+**Notas importantes:**
+
+- Los números se actualizan cada vez que activas el modo.
+- Los números respetan las reglas de exclusión (`aria-hidden`, `hidden`, etc.).
+- Funciona en navegadores con soporte para Web Speech API.
 
 ## Preferencias y persistencia
 
