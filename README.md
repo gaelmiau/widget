@@ -206,10 +206,39 @@ Excluir contenido técnico:
 <div hidden>Contenido oculto</div>
 ```
 
+## Herramientas de Lectura
+
+El widget incluye dos herramientas visuales para mejorar la experiencia de lectura:
+
+### Regleta de Lectura
+
+Activa una línea horizontal que sigue el movimiento del ratón, funcionando como guía visual durante la lectura. Esto ayuda a mantener el enfoque en una línea específica del texto y es especialmente útil para personas con dislexia o dificultades de seguimiento visual.
+
+**Características:**
+- Responsive: funciona en cualquier tamaño de pantalla
+- Seguimiento de ratón: se posiciona según el cursor
+- Compatible con todos los temas (cambia color según el tema activo)
+- Se puede desactivar en cualquier momento
+
+### Resalte de Hipervínculos
+
+Destaca todos los hipervínculos de la página con un color brillante y contraste elevado, facilitando su identificación y navegación.
+
+**Características:**
+- Resalta automáticamente todos los enlaces excepto los del widget
+- Efecto visual mejorado con hover animado
+- Compatible con todos los temas (colores adaptativos)
+- Incluye estilos para alto contraste
+- Se puede activar/desactivar libremente
+
+**Nota:** Ambas características se desactivan automáticamente al hacer clic en "Restablecer Todo".
+
 ## Resolución de problemas
 
 - Si el botón del widget no aparece, confirma que `accessibility-widget.css` y `accessibility-widget.js` están en la ruta correcta y que el script se carga después del `DOM`.
 - Si no se oyen voces en español, revisa la disponibilidad de voces en el navegador y en el sistema operativo.
 - Para depurar, abre la consola del navegador y busca errores relacionados con `speechSynthesis` o la carga de los recursos.
+- Si la regleta de lectura no se posiciona correctamente, asegúrate de que los elementos de la página no tienen `z-index` muy altos que la bloqueen.
+- Si los enlaces resaltados no son visibles, intenta cambiar de tema para encontrar mejor contraste.
 
 ---

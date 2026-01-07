@@ -17,6 +17,8 @@
             this.isSpeaking = false;
             this.sectionReadingMode = false; // NUEVO: controla si el nav con flechas está activo
             this.numberedVoiceMode = false; // NUEVO: modo de comandos por voz con números
+            this.readingRulerActive = false; // NUEVO: regleta de lectura
+            this.highlightLinksActive = false; // NUEVO: resalto de hipervínculos
 
             // ========== Preferencias ==========
             this.currentTheme = 'default';
@@ -210,6 +212,16 @@
                                 </div>
                             </section>
 
+                            <!-- Regleta de Lectura -->
+                            <section class="a11y-section">
+                                <h3>Herramientas de Lectura</h3>
+                                <p class="a11y-help-text">Activar regleta de lectura para guiar tu vista durante la lectura.</p>
+                                <div class="a11y-tts-controls">
+                                    <button id="a11y-reading-ruler-toggle" class="a11y-btn-primary" aria-label="Activar regleta de lectura" title="Activa una regleta horizontal para facilitar la lectura" data-tooltip="Regleta de lectura">Activar Regleta de Lectura</button>
+                                    <button id="a11y-highlight-links-toggle" class="a11y-btn-primary" aria-label="Resaltar hipervínculos" title="Resalta todos los hipervínculos de la página" data-tooltip="Resaltar enlaces">Resaltar Enlaces</button>
+                                </div>
+                            </section>
+
                             <!-- Reset -->
                             <section class="a11y-section">
                                 <button id="a11y-reset" class="a11y-btn-reset" aria-label="Restablecer" title="Restablece opciones" data-tooltip="Restablecer">Restablecer Todo</button>
@@ -305,6 +317,8 @@
             const stopBtn = document.getElementById('a11y-stop-reading');
             const sectionReadingToggle = document.getElementById('a11y-section-reading-toggle');
             const numberedVoiceToggle = document.getElementById('a11y-numbered-voice-toggle');
+            const readingRulerToggle = document.getElementById('a11y-reading-ruler-toggle');
+            const highlightLinksToggle = document.getElementById('a11y-highlight-links-toggle');
             const resetBtn = document.getElementById('a11y-reset');
             const dyslexiaToggle = document.getElementById('a11y-dyslexia-toggle');
             if (dyslexiaToggle) dyslexiaToggle.addEventListener('click', () => this.toggleDyslexiaMode());
@@ -314,6 +328,8 @@
             if (stopBtn) stopBtn.addEventListener('click', () => this.stopReading());
             if (sectionReadingToggle) sectionReadingToggle.addEventListener('click', () => this.toggleSectionReading());
             if (numberedVoiceToggle) numberedVoiceToggle.addEventListener('click', () => this.toggleNumberedVoiceMode());
+            if (readingRulerToggle) readingRulerToggle.addEventListener('click', () => this.toggleReadingRuler());
+            if (highlightLinksToggle) highlightLinksToggle.addEventListener('click', () => this.toggleHighlightLinks());
             if (resetBtn) resetBtn.addEventListener('click', () => this.resetAll());
 
             // Slider de velocidad
@@ -622,7 +638,26 @@
             this.setReadingRate(1);
             this.sectionReadingMode = false;
             this.numberedVoiceMode = false;
+            this.readingRulerActive = false;
+            this.highlightLinksActive = false;
             this.stopReading();
+            
+            // Regleta de lectura
+            if (this.readingRulerActive) this.toggleReadingRuler();
+            const rulerBtn = document.getElementById('a11y-reading-ruler-toggle');
+            if (rulerBtn) {
+                rulerBtn.textContent = 'Activar Regleta de Lectura';
+                rulerBtn.classList.remove('a11y-btn-active');
+            }
+            
+            // Resalte de enlaces
+            if (this.highlightLinksActive) this.toggleHighlightLinks();
+            const linksBtn = document.getElementById('a11y-highlight-links-toggle');
+            if (linksBtn) {
+                linksBtn.textContent = 'Resaltar Enlaces';
+                linksBtn.classList.remove('a11y-btn-active');
+            }
+            
             const btn = document.getElementById('a11y-section-reading-toggle');
             if (btn) {
                 btn.textContent = 'Iniciar Lectura por Secciones';
@@ -1049,6 +1084,85 @@
                 if (st && (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0)) return true;
             } catch (e) { /* ignore errors */ }
             return false;
+        }
+
+        // ==================== REGLETA DE LECTURA ====================
+        toggleReadingRuler() {
+            this.readingRulerActive = !this.readingRulerActive;
+            const btn = document.getElementById('a11y-reading-ruler-toggle');
+            
+            if (this.readingRulerActive) {
+                // Crear regleta
+                let ruler = document.getElementById('a11y-reading-ruler');
+                if (!ruler) {
+                    ruler = document.createElement('div');
+                    ruler.id = 'a11y-reading-ruler';
+                    document.body.insertBefore(ruler, document.body.firstChild);
+                }
+                
+                // Rastrear movimiento del mouse para posicionar la regleta
+                const updateRulerPosition = (e) => {
+                    ruler.style.top = e.clientY + 'px';
+                };
+                
+                document.addEventListener('mousemove', updateRulerPosition);
+                ruler.dataset.listenerFunction = updateRulerPosition;
+                
+                if (btn) {
+                    btn.textContent = 'Desactivar Regleta de Lectura';
+                    btn.classList.add('a11y-btn-active');
+                }
+            } else {
+                // Remover regleta
+                const ruler = document.getElementById('a11y-reading-ruler');
+                if (ruler) {
+                    if (ruler.dataset.listenerFunction) {
+                        document.removeEventListener('mousemove', ruler.dataset.listenerFunction);
+                    }
+                    ruler.remove();
+                }
+                
+                if (btn) {
+                    btn.textContent = 'Activar Regleta de Lectura';
+                    btn.classList.remove('a11y-btn-active');
+                }
+            }
+        }
+
+        // ==================== RESALTAR HIPERVÍNCULOS ====================
+        toggleHighlightLinks() {
+            this.highlightLinksActive = !this.highlightLinksActive;
+            const btn = document.getElementById('a11y-highlight-links-toggle');
+            
+            if (this.highlightLinksActive) {
+                // Encontrar todos los links (excepto los del widget)
+                const links = document.querySelectorAll('a:not(#accessibility-widget a)');
+                
+                links.forEach(link => {
+                    if (!link.classList.contains('a11y-link-highlighted')) {
+                        link.classList.add('a11y-link-highlighted');
+                        // Guardar estilo original si es necesario
+                        link.dataset.a11yOriginalStyle = link.getAttribute('style') || '';
+                    }
+                });
+                
+                if (btn) {
+                    btn.textContent = 'Desactivar Resalte de Enlaces';
+                    btn.classList.add('a11y-btn-active');
+                }
+            } else {
+                // Remover resalte de todos los links
+                const links = document.querySelectorAll('a.a11y-link-highlighted');
+                
+                links.forEach(link => {
+                    link.classList.remove('a11y-link-highlighted');
+                });
+                
+                if (btn) {
+                    btn.textContent = 'Resaltar Enlaces';
+                    btn.classList.remove('a11y-btn-active');
+                }
+            }
         }
     }
 

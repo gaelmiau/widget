@@ -639,6 +639,88 @@ body.a11y-theme-high-contrast-white .a11y-number-badge {
     box-shadow: 0 2px 8px rgba(255, 255, 255, 0.8);
 }
 
+/* ==================== REGLETA DE LECTURA ==================== */
+#a11y-reading-ruler {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #ef4444 20%, #ef4444 50%, transparent 80%);
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.5);
+    z-index: 999998;
+    pointer-events: none;
+}
+
+body.a11y-theme-dark #a11y-reading-ruler {
+    background: linear-gradient(90deg, transparent, #ef4444 20%, #ef4444 50%, transparent 80%);
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.8);
+}
+
+body.a11y-theme-high-contrast-yellow #a11y-reading-ruler {
+    background: linear-gradient(90deg, transparent, #000 20%, #000 50%, transparent 80%);
+    height: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+
+body.a11y-theme-high-contrast-white #a11y-reading-ruler {
+    background: linear-gradient(90deg, transparent, #ffffff 20%, #ffffff 50%, transparent 80%);
+    height: 4px;
+    box-shadow: 0 2px 8px rgba(255, 255, 255, 0.8);
+}
+
+/* ==================== RESALTE DE HIPERVÍNCULOS ==================== */
+a.a11y-link-highlighted {
+    background-color: #fbbf24 !important;
+    color: #000 !important;
+    font-weight: bold !important;
+    border-radius: 3px;
+    padding: 2px 4px;
+    text-decoration: underline !important;
+    box-shadow: 0 0 6px rgba(251, 191, 36, 0.6) !important;
+    transition: all 0.2s ease;
+}
+
+a.a11y-link-highlighted:hover {
+    background-color: #f59e0b !important;
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.8) !important;
+    transform: scale(1.02);
+}
+
+body.a11y-theme-dark a.a11y-link-highlighted {
+    background-color: #dc2626 !important;
+    color: #fff !important;
+    box-shadow: 0 0 6px rgba(220, 38, 38, 0.8) !important;
+}
+
+body.a11y-theme-dark a.a11y-link-highlighted:hover {
+    background-color: #991b1b !important;
+    box-shadow: 0 0 10px rgba(220, 38, 38, 1) !important;
+}
+
+body.a11y-theme-high-contrast-yellow a.a11y-link-highlighted {
+    background-color: #000 !important;
+    color: #fef08a !important;
+    border: 2px solid #fef08a !important;
+    box-shadow: 0 0 8px rgba(254, 240, 138, 0.8) !important;
+}
+
+body.a11y-theme-high-contrast-white a.a11y-link-highlighted {
+    background-color: #000 !important;
+    color: #fff !important;
+    border: 2px solid #fff !important;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.8) !important;
+}
+
+/* Estado activo del botón */
+.a11y-btn-active {
+    background-color: #10b981 !important;
+}
+
+.a11y-btn-active:hover {
+    background-color: #059669 !important;
+}
+
 @media (max-width: 480px) {
     .a11y-panel {
         width: calc(100vw - 40px);
