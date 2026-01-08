@@ -140,24 +140,6 @@
                                 </div>
                             </section>
 
-                            <!-- Tipografia Dyslexia -->
-                            <section class="a11y-section">
-                                <h3>Modo Dislexia</h3>
-                                <p class="a11y-help-text">Activa esta función para usar la tipografía OpenDyslexic, diseñada para facilitar la lectura en personas con dislexia.</p>
-                                <div class="a11y-tts-controls">
-                                    <button id="a11y-dyslexia-toggle" class="a11y-btn-primary" aria-label="Activar modo dislexia" title="Activa la tipografía OpenDyslexic para personas con dislexia">Activar Modo Dislexia</button>
-                                </div>
-                            </section>
-
-                            <!-- Tipografia Bionic Reading -->
-                            <section class="a11y-section">
-                                <h3>Modo Bionic Reading</h3>
-                                <p class="a11y-help-text">Activa esta función para resaltar el inicio de las palabras y facilitar la lectura rápida y la comprensión del texto.</p>
-                                <button class="a11y-btn-primary" id="a11y-bionic-btn" title="Lectura Biónica">
-                                    Bionic Reading
-                                </button>
-                            </section>
-
                             <!-- Temas -->
                             <section class="a11y-section">
                                 <h3>Temas</h3>
@@ -176,6 +158,34 @@
                                     <button class="a11y-btn" data-cursor-size="default" aria-label="Puntero normal" title="Puntero normal">Normal</button>
                                     <button class="a11y-btn" data-cursor-size="large" aria-label="Puntero grande" title="Puntero grande">Grande</button>
                                     <button class="a11y-btn" data-cursor-size="xlarge" aria-label="Puntero extra grande" title="Puntero extra grande">Extra</button>
+                                </div>
+                            </section>
+
+                            <!-- Tipografia Dyslexia -->
+                            <section class="a11y-section">
+                                <h3>Modo Dislexia</h3>
+                                <p class="a11y-help-text">Activa esta función para usar la tipografía OpenDyslexic, diseñada para facilitar la lectura en personas con dislexia.</p>
+                                <div class="a11y-tts-controls">
+                                    <button id="a11y-dyslexia-toggle" class="a11y-btn-primary" aria-label="Activar modo dislexia" title="Activa la tipografía OpenDyslexic para personas con dislexia">Activar Modo Dislexia</button>
+                                </div>
+                            </section>
+
+                            <!-- Tipografia Bionic Reading -->
+                            <section class="a11y-section">
+                                <h3>Modo Bionic Reading</h3>
+                                <p class="a11y-help-text">Activa esta función para resaltar el inicio de las palabras y facilitar la lectura rápida y la comprensión del texto.</p>
+                                <button class="a11y-btn-primary" id="a11y-bionic-btn" title="Lectura Biónica">
+                                    Bionic Reading
+                                </button>
+                            </section>
+
+                            <!-- Regleta de Lectura -->
+                            <section class="a11y-section">
+                                <h3>Herramientas de Lectura</h3>
+                                <p class="a11y-help-text">Activar regleta de lectura para guiar tu vista durante la lectura.</p>
+                                <div class="a11y-tts-controls">
+                                    <button id="a11y-reading-ruler-toggle" class="a11y-btn-primary" aria-label="Activar regleta de lectura" title="Activa una regleta horizontal para facilitar la lectura">Activar Regleta de Lectura</button>
+                                    <button id="a11y-highlight-links-toggle" class="a11y-btn-primary" aria-label="Resaltar hipervínculos" title="Resalta todos los hipervínculos de la página">Resaltar Enlaces</button>
                                 </div>
                             </section>
 
@@ -217,15 +227,7 @@
                                 </div>
                             </section>
 
-                            <!-- Regleta de Lectura -->
-                            <section class="a11y-section">
-                                <h3>Herramientas de Lectura</h3>
-                                <p class="a11y-help-text">Activar regleta de lectura para guiar tu vista durante la lectura.</p>
-                                <div class="a11y-tts-controls">
-                                    <button id="a11y-reading-ruler-toggle" class="a11y-btn-primary" aria-label="Activar regleta de lectura" title="Activa una regleta horizontal para facilitar la lectura">Activar Regleta de Lectura</button>
-                                    <button id="a11y-highlight-links-toggle" class="a11y-btn-primary" aria-label="Resaltar hipervínculos" title="Resalta todos los hipervínculos de la página">Resaltar Enlaces</button>
-                                </div>
-                            </section>
+                            
 
                             <!-- Reset -->
                             <section class="a11y-section">
@@ -818,11 +820,15 @@
             try {
                 this.numberedVoiceRecog = new Recognition();
                 this.numberedVoiceRecog.lang = this.defaultLang || 'es-ES';
+                // Solo obtenemos resultados finales para evitar duplicados (interim puede disparar varias veces)
                 this.numberedVoiceRecog.continuous = true;
-                this.numberedVoiceRecog.interimResults = true;
+                this.numberedVoiceRecog.interimResults = false;
 
                 this.numberedVoiceRecog.onresult = (event) => {
                     for (let i = event.resultIndex; i < event.results.length; i++) {
+                        // Ignorar resultados intermedios (si los hubiera)
+                        if (!event.results[i].isFinal) continue;
+
                         const transcript = event.results[i][0].transcript.toLowerCase().trim();
 
                         // Palabras clave para desactivar
@@ -848,8 +854,14 @@
 
                         // Buscar números directos (0-9)
                         for (let num = 0; num < this.totalNumberedElements; num++) {
-                            if (transcript.includes(num.toString()) || transcript.includes(numberWords[num.toString()])) {
+                            if (transcript.includes(num.toString())) {
+                                // Pausar reconocimiento para evitar que el TTS sea captado
+                                if (this.numberedVoiceRecog) {
+                                    try { this.numberedVoiceRecog.abort(); } catch (e) { }
+                                }
                                 this.handleNumberedVoiceCommand(num);
+                                // Reiniciar reconocimiento tras un breve retardo (si el modo sigue activo)
+                                setTimeout(() => { if (this.numberedVoiceMode) this.startNumberedVoiceRecognition(); }, 800);
                                 return;
                             }
                         }
@@ -857,10 +869,15 @@
                         // Buscar palabras de números
                         for (const [word, num] of Object.entries(numberWords)) {
                             if (transcript.includes(word) && num < this.totalNumberedElements) {
+                                if (this.numberedVoiceRecog) {
+                                    try { this.numberedVoiceRecog.abort(); } catch (e) { }
+                                }
                                 this.handleNumberedVoiceCommand(num);
+                                setTimeout(() => { if (this.numberedVoiceMode) this.startNumberedVoiceRecognition(); }, 800);
                                 return;
                             }
                         }
+
                     }
                 };
 
@@ -977,38 +994,38 @@
                 if (e.key === 'Enter' && this.sectionReadingMode) {
                     e.preventDefault();
                     const currentEl = this.readableElements[this.virtualFocusIndex];
-                    
+
                     if (currentEl) {
                         // Si es un botón o enlace, hacer click
-                        const isButton = currentEl.tagName === 'BUTTON' || 
-                                        currentEl.getAttribute('role') === 'button';
-                        const isLink = currentEl.tagName === 'A' || 
-                                      currentEl.getAttribute('role') === 'link';
-                        
+                        const isButton = currentEl.tagName === 'BUTTON' ||
+                            currentEl.getAttribute('role') === 'button';
+                        const isLink = currentEl.tagName === 'A' ||
+                            currentEl.getAttribute('role') === 'link';
+
                         if (isButton || isLink) {
                             currentEl.click();
-                            
+
                             // Esperar a que se abra el modal/contenido (si lo hay)
                             setTimeout(() => {
                                 const openedModal = this.findOpenedModal();
-                                
+
                                 if (openedModal) {
                                     // Leer el título o encabezado del modal si existe
                                     const modalTitle = openedModal.querySelector('h1, h2, h3, [role="heading"], .modal-title, .title');
                                     let titleText = '';
-                                    
+
                                     if (modalTitle && !this.shouldIgnoreElement(modalTitle)) {
                                         titleText = modalTitle.textContent.trim();
                                         if (titleText) titleText += '. ';
                                     }
-                                    
+
                                     // Leer el contenido principal del modal
                                     const contentText = openedModal.textContent.trim();
                                     if (contentText) {
                                         const fullText = titleText + contentText;
                                         this.speak(fullText, this.defaultLang);
                                     }
-                                    
+
                                     // Reconstruir lista de elementos para que incluya el contenido del modal
                                     this.buildReadableElementsList();
                                 }
@@ -1041,7 +1058,7 @@
             const elemLang = el.dataset?.a11yLang || el.lang || this.findClosestLang(el) || this.defaultLang;
             let text = '';
             const tag = el.tagName.toLowerCase();
-            
+
             if (tag === 'img') {
                 text = el.alt ? `Imagen: ${el.alt}` : 'Imagen sin descripción';
             } else if (/h[1-6]/.test(tag)) {
@@ -1055,16 +1072,16 @@
             } else {
                 text = el.textContent.trim();
             }
-            
+
             if (!text) return;
-            
+
             const utter = new SpeechSynthesisUtterance(text);
             utter.lang = elemLang;
             utter.rate = this.currentReadingRate;
             const voices = this.speechSynthesis.getVoices();
             const voice = voices.find(v => v.lang.startsWith(elemLang.split('-')[0])) || voices[0];
             if (voice) utter.voice = voice;
-            
+
             this.speechSynthesis.cancel();
             this.speechSynthesis.speak(utter);
         }
@@ -1082,7 +1099,7 @@
                 '.drawer:not([style*="display: none"])',
                 '[data-modal]:not([style*="display: none"])'
             ];
-            
+
             for (const selector of modalSelectors) {
                 const element = document.querySelector(selector);
                 if (element && element.offsetHeight > 0 && element.offsetParent !== null) {
