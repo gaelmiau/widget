@@ -44,6 +44,10 @@
             // ========== Regleta de Lectura ==========
             this.readingRulerListener = null; // Guardar referencia al listener
 
+            // ========== Foco y Trap ==========
+            this.focusTrapHandler = null;
+            this.previouslyFocusedEl = null;
+
             // ========== Idioma ==========
             this.defaultLang = 'es-ES';
 
@@ -357,8 +361,39 @@
             const panel = document.getElementById('a11y-panel');
             if (panel) panel.classList.add('open');
             this.isOpen = true;
+            // Guardar elemento previamente enfocado para restaurarlo al cerrar
+            this.previouslyFocusedEl = document.activeElement;
+
             const closeBtn = document.getElementById('a11y-close-btn');
             if (closeBtn) closeBtn.focus();
+
+            // Instalar trap de foco dentro del panel
+            if (panel) {
+                const focusableSelector = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+                const focusable = Array.from(panel.querySelectorAll(focusableSelector)).filter(el => el.offsetParent !== null);
+                const firstEl = focusable[0];
+                const lastEl = focusable[focusable.length - 1];
+
+                this.focusTrapHandler = (e) => {
+                    if (e.key !== 'Tab') return;
+                    const active = document.activeElement;
+                    if (e.shiftKey) {
+                        // Shift + Tab
+                        if (active === firstEl || active === panel) {
+                            e.preventDefault();
+                            if (lastEl) lastEl.focus();
+                        }
+                    } else {
+                        // Tab
+                        if (active === lastEl) {
+                            e.preventDefault();
+                            if (firstEl) firstEl.focus();
+                        }
+                    }
+                };
+
+                document.addEventListener('keydown', this.focusTrapHandler);
+            }
         }
 
         closePanel() {
@@ -367,6 +402,17 @@
             this.isOpen = false;
             const toggleBtn = document.getElementById('a11y-toggle-btn');
             if (toggleBtn) toggleBtn.focus();
+
+            // Remover trap de foco si existe
+            if (this.focusTrapHandler) {
+                try { document.removeEventListener('keydown', this.focusTrapHandler); } catch (e) { }
+                this.focusTrapHandler = null;
+            }
+
+            // Restaurar foco previo si existía y sigue en el DOM
+            try {
+                if (this.previouslyFocusedEl && this.previouslyFocusedEl.focus) this.previouslyFocusedEl.focus();
+            } catch (e) { }
         }
 
         autoClosePanel() {
