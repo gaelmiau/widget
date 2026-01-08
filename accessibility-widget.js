@@ -47,6 +47,8 @@
             // ========== Idioma ==========
             this.defaultLang = 'es-ES';
 
+            lucide.createIcons();
+
             this.init();
         }
 
@@ -108,13 +110,13 @@
                 <div id="accessibility-widget" class="a11y-widget">
                     <button id="a11y-toggle-btn" class="a11y-toggle-btn"
                             aria-label="Abrir panel de accesibilidad"
-                            title="Accesibilidad - Opciones para mejorar la experiencia"
-                            data-tooltip="Abre el panel de opciones de accesibilidad">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <circle cx="12" cy="8" r="1.5" fill="currentColor"></circle>
-                            <path d="M8 14h8M12 12v6"></path>
-                        </svg>
+                            title="Activa las funciones de accesibilidad para mejorar tu experiencia.">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-person-standing">
+                        <circle cx="12" cy="5" r="1"/>
+                        <path d="m9 20 3-6 3 6"/>
+                        <path d="m6 8 6 2 6-2"/>
+                        <path d="M12 10v4"/>
+                    </svg>
                     </button>
 
                     <div id="a11y-panel" class="a11y-panel" role="dialog" aria-labelledby="a11y-title" aria-hidden="true">
@@ -123,7 +125,7 @@
                             <button id="a11y-close-btn" class="a11y-close-btn"
                                     aria-label="Cerrar panel"
                                     title="Cierra el panel de accesibilidad"
-                                    data-tooltip="Cierra este panel">×</button>
+                                    >×</button>
                         </div>
 
                         <div class="a11y-panel-content">
@@ -131,10 +133,10 @@
                             <section class="a11y-section">
                                 <h3>Tamaño de Texto</h3>
                                 <div class="a11y-button-group" role="group" aria-label="Opciones de tamaño de texto">
-                                    <button class="a11y-btn" data-font-size="small" aria-label="Texto pequeño" title="Reduce el texto" data-tooltip="Texto pequeño">A</button>
-                                    <button class="a11y-btn" data-font-size="medium" aria-label="Texto mediano" title="Tamaño por defecto" data-tooltip="Texto mediano">A</button>
-                                    <button class="a11y-btn a11y-btn-large" data-font-size="large" aria-label="Texto grande" title="Aumenta el texto" data-tooltip="Texto grande">A</button>
-                                    <button class="a11y-btn a11y-btn-xlarge" data-font-size="xlarge" aria-label="Texto extra grande" title="Texto extra grande" data-tooltip="Texto extra grande">A</button>
+                                    <button class="a11y-btn" data-font-size="small" aria-label="Texto pequeño" title="Reduce el texto">A</button>
+                                    <button class="a11y-btn" data-font-size="medium" aria-label="Texto mediano" title="Tamaño por defecto">A</button>
+                                    <button class="a11y-btn a11y-btn-large" data-font-size="large" aria-label="Texto grande" title="Aumenta el texto">A</button>
+                                    <button class="a11y-btn a11y-btn-xlarge" data-font-size="xlarge" aria-label="Texto extra grande" title="Texto extra grande">A</button>
                                 </div>
                             </section>
 
@@ -143,7 +145,7 @@
                                 <h3>Modo Dislexia</h3>
                                 <p class="a11y-help-text">Activa esta función para usar la tipografía OpenDyslexic, diseñada para facilitar la lectura en personas con dislexia.</p>
                                 <div class="a11y-tts-controls">
-                                    <button id="a11y-dyslexia-toggle" class="a11y-btn-primary" aria-label="Activar modo dislexia" title="Activa la tipografía OpenDyslexic para personas con dislexia" data-tooltip="Modo dislexia">Activar Modo Dislexia</button>
+                                    <button id="a11y-dyslexia-toggle" class="a11y-btn-primary" aria-label="Activar modo dislexia" title="Activa la tipografía OpenDyslexic para personas con dislexia">Activar Modo Dislexia</button>
                                 </div>
                             </section>
 
@@ -151,7 +153,7 @@
                             <section class="a11y-section">
                                 <h3>Modo Bionic Reading</h3>
                                 <p class="a11y-help-text">Activa esta función para resaltar el inicio de las palabras y facilitar la lectura rápida y la comprensión del texto.</p>
-                                <button class="a11y-btn-primary" id="a11y-bionic-btn" title="Lectura Biónica" data-tooltip="Resalta el inicio de las palabras">
+                                <button class="a11y-btn-primary" id="a11y-bionic-btn" title="Lectura Biónica">
                                     Bionic Reading
                                 </button>
                             </section>
@@ -160,10 +162,10 @@
                             <section class="a11y-section">
                                 <h3>Temas</h3>
                                 <div class="a11y-theme-group" role="group" aria-label="Opciones de tema">
-                                    <button class="a11y-theme-btn" data-theme="default" aria-label="Tema predeterminado" title="Tema normal" data-tooltip="Tema normal"><span class="theme-preview theme-default"></span><span>Predeterminado</span></button>
-                                    <button class="a11y-theme-btn" data-theme="dark" aria-label="Tema oscuro" title="Modo oscuro" data-tooltip="Modo oscuro"><span class="theme-preview theme-dark"></span><span>Oscuro</span></button>
-                                    <button class="a11y-theme-btn" data-theme="high-contrast-yellow" aria-label="Alto contraste amarillo" title="Alto contraste amarillo" data-tooltip="Alto contraste amarillo"><span class="theme-preview theme-yellow"></span><span>Alto contraste amarillo</span></button>
-                                    <button class="a11y-theme-btn" data-theme="high-contrast-white" aria-label="Alto contraste blanco" title="Alto contraste blanco" data-tooltip="Alto contraste blanco"><span class="theme-preview theme-white"></span><span>Alto contraste blanco</span></button>
+                                    <button class="a11y-theme-btn" data-theme="default" aria-label="Tema predeterminado" title="Tema normal"><span class="theme-preview theme-default"></span><span>Predeterminado</span></button>
+                                    <button class="a11y-theme-btn" data-theme="dark" aria-label="Tema oscuro" title="Modo oscuro"><span class="theme-preview theme-dark"></span><span>Oscuro</span></button>
+                                    <button class="a11y-theme-btn" data-theme="high-contrast-yellow" aria-label="Alto contraste amarillo" title="Alto contraste amarillo"><span class="theme-preview theme-yellow"></span><span>Alto contraste amarillo</span></button>
+                                    <button class="a11y-theme-btn" data-theme="high-contrast-white" aria-label="Alto contraste blanco" title="Alto contraste blanco"><span class="theme-preview theme-white"></span><span>Alto contraste blanco</span></button>
                                 </div>
                             </section>
 
@@ -171,9 +173,9 @@
                             <section class="a11y-section">
                                 <h3>Tamaño del Puntero</h3>
                                 <div class="a11y-button-group" role="group" aria-label="Opciones de tamaño del puntero">
-                                    <button class="a11y-btn" data-cursor-size="default" aria-label="Puntero normal" title="Puntero normal" data-tooltip="Puntero normal">Normal</button>
-                                    <button class="a11y-btn" data-cursor-size="large" aria-label="Puntero grande" title="Puntero grande" data-tooltip="Puntero grande">Grande</button>
-                                    <button class="a11y-btn" data-cursor-size="xlarge" aria-label="Puntero extra grande" title="Puntero extra grande" data-tooltip="Puntero extra grande">Extra</button>
+                                    <button class="a11y-btn" data-cursor-size="default" aria-label="Puntero normal" title="Puntero normal">Normal</button>
+                                    <button class="a11y-btn" data-cursor-size="large" aria-label="Puntero grande" title="Puntero grande">Grande</button>
+                                    <button class="a11y-btn" data-cursor-size="xlarge" aria-label="Puntero extra grande" title="Puntero extra grande">Extra</button>
                                 </div>
                             </section>
 
@@ -191,9 +193,9 @@
                                 <h3>Lector de Texto (TTS)</h3>
                                 <p class="a11y-help-text">Selecciona texto y pulsa "Leer Selección" o usa "Leer Página". Puedes marcar elementos con <code>data-a11y-lang</code> para que se lean en otro idioma.</p>
                                 <div class="a11y-tts-controls">
-                                    <button id="a11y-read-selection" class="a11y-btn-primary" aria-label="Leer texto seleccionado" title="Lee el texto seleccionado" data-tooltip="Lee tu selección">Leer Selección</button>
-                                    <button id="a11y-read-page" class="a11y-btn-primary" aria-label="Leer toda la página" title="Lee toda la página" data-tooltip="Lee toda la página">Leer Página</button>
-                                    <button id="a11y-stop-reading" class="a11y-btn-secondary" aria-label="Detener lectura" title="Detiene la lectura" data-tooltip="Detener" disabled>Detener</button>
+                                    <button id="a11y-read-selection" class="a11y-btn-primary" aria-label="Leer texto seleccionado" title="Lee el texto seleccionado">Leer Selección</button>
+                                    <button id="a11y-read-page" class="a11y-btn-primary" aria-label="Leer toda la página" title="Lee toda la página">Leer Página</button>
+                                    <button id="a11y-stop-reading" class="a11y-btn-secondary" aria-label="Detener lectura" title="Detiene la lectura" disabled>Detener</button>
                                 </div>
                             </section>
 
@@ -202,7 +204,7 @@
                                 <h3>Lectura por Secciones</h3>
                                 <p class="a11y-help-text">Activa este modo para navegar con las flechas del teclado y escuchar cada sección.</p>
                                 <div class="a11y-tts-controls">
-                                    <button id="a11y-section-reading-toggle" class="a11y-btn-primary" aria-label="Iniciar lectura por secciones" title="Activa modo de lectura por secciones con navegación por flechas" data-tooltip="Lectura por secciones">Iniciar Lectura por Secciones</button>
+                                    <button id="a11y-section-reading-toggle" class="a11y-btn-primary" aria-label="Iniciar lectura por secciones" title="Activa modo de lectura por secciones con navegación por flechas">Iniciar Lectura por Secciones</button>
                                 </div>
                             </section>
 
@@ -211,7 +213,7 @@
                                 <h3>Comandos por Voz</h3>
                                 <p class="a11y-help-text">Activa este modo para numerar elementos y controlarlos por voz. Dice un número para leer o interactuar con ese elemento.</p>
                                 <div class="a11y-tts-controls">
-                                    <button id="a11y-numbered-voice-toggle" class="a11y-btn-primary" aria-label="Activar comandos de voz por números" title="Activa números en elementos para control por voz" data-tooltip="Comandos por voz">Activar Comandos por Voz</button>
+                                    <button id="a11y-numbered-voice-toggle" class="a11y-btn-primary" aria-label="Activar comandos de voz por números" title="Activa números en elementos para control por voz">Activar Comandos por Voz</button>
                                 </div>
                             </section>
 
@@ -220,14 +222,14 @@
                                 <h3>Herramientas de Lectura</h3>
                                 <p class="a11y-help-text">Activar regleta de lectura para guiar tu vista durante la lectura.</p>
                                 <div class="a11y-tts-controls">
-                                    <button id="a11y-reading-ruler-toggle" class="a11y-btn-primary" aria-label="Activar regleta de lectura" title="Activa una regleta horizontal para facilitar la lectura" data-tooltip="Regleta de lectura">Activar Regleta de Lectura</button>
-                                    <button id="a11y-highlight-links-toggle" class="a11y-btn-primary" aria-label="Resaltar hipervínculos" title="Resalta todos los hipervínculos de la página" data-tooltip="Resaltar enlaces">Resaltar Enlaces</button>
+                                    <button id="a11y-reading-ruler-toggle" class="a11y-btn-primary" aria-label="Activar regleta de lectura" title="Activa una regleta horizontal para facilitar la lectura">Activar Regleta de Lectura</button>
+                                    <button id="a11y-highlight-links-toggle" class="a11y-btn-primary" aria-label="Resaltar hipervínculos" title="Resalta todos los hipervínculos de la página">Resaltar Enlaces</button>
                                 </div>
                             </section>
 
                             <!-- Reset -->
                             <section class="a11y-section">
-                                <button id="a11y-reset" class="a11y-btn-reset" aria-label="Restablecer" title="Restablece opciones" data-tooltip="Restablecer">Restablecer Todo</button>
+                                <button id="a11y-reset" class="a11y-btn-reset" aria-label="Restablecer" title="Restablece opciones">Restablecer Todo</button>
                             </section>
                         </div>
                     </div>
@@ -644,7 +646,7 @@
             this.readingRulerActive = false;
             this.highlightLinksActive = false;
             this.stopReading();
-            
+
             // Regleta de lectura
             if (this.readingRulerActive) this.toggleReadingRuler();
             const rulerBtn = document.getElementById('a11y-reading-ruler-toggle');
@@ -652,7 +654,7 @@
                 rulerBtn.textContent = 'Activar Regleta de Lectura';
                 rulerBtn.classList.remove('a11y-btn-active');
             }
-            
+
             // Resalte de enlaces
             if (this.highlightLinksActive) this.toggleHighlightLinks();
             const linksBtn = document.getElementById('a11y-highlight-links-toggle');
@@ -660,7 +662,7 @@
                 linksBtn.textContent = 'Resaltar Enlaces';
                 linksBtn.classList.remove('a11y-btn-active');
             }
-            
+
             const btn = document.getElementById('a11y-section-reading-toggle');
             if (btn) {
                 btn.textContent = 'Iniciar Lectura por Secciones';
@@ -821,7 +823,7 @@
                 this.numberedVoiceRecog.onresult = (event) => {
                     for (let i = event.resultIndex; i < event.results.length; i++) {
                         const transcript = event.results[i][0].transcript.toLowerCase().trim();
-                        
+
                         // Palabras clave para desactivar
                         if (transcript.includes('desactivar') || transcript.includes('salir')) {
                             this.toggleNumberedVoiceMode();
@@ -891,7 +893,7 @@
             if (!element) return;
 
             const tag = element.tagName.toLowerCase();
-            
+
             // Si es interactivo (botón, enlace), hacer click
             if (['button', 'a'].includes(tag) || element.getAttribute('role') === 'button' || element.onclick) {
                 element.click();
@@ -1093,7 +1095,7 @@
         toggleReadingRuler() {
             this.readingRulerActive = !this.readingRulerActive;
             const btn = document.getElementById('a11y-reading-ruler-toggle');
-            
+
             if (this.readingRulerActive) {
                 // Crear regleta
                 let ruler = document.getElementById('a11y-reading-ruler');
@@ -1102,15 +1104,15 @@
                     ruler.id = 'a11y-reading-ruler';
                     document.body.insertBefore(ruler, document.body.firstChild);
                 }
-                
+
                 // Rastrear movimiento del mouse para posicionar la regleta
                 // Guardar la función en la clase para poder removerla después
                 this.readingRulerListener = (e) => {
                     ruler.style.top = e.clientY + 'px';
                 };
-                
+
                 document.addEventListener('mousemove', this.readingRulerListener);
-                
+
                 if (btn) {
                     btn.textContent = 'Desactivar Regleta de Lectura';
                     btn.classList.add('a11y-btn-active');
@@ -1118,17 +1120,17 @@
             } else {
                 // Remover regleta
                 const ruler = document.getElementById('a11y-reading-ruler');
-                
+
                 // Remover el listener usando la referencia guardada en la clase
                 if (this.readingRulerListener) {
                     document.removeEventListener('mousemove', this.readingRulerListener);
                     this.readingRulerListener = null;
                 }
-                
+
                 if (ruler) {
                     ruler.remove();
                 }
-                
+
                 if (btn) {
                     btn.textContent = 'Activar Regleta de Lectura';
                     btn.classList.remove('a11y-btn-active');
@@ -1140,11 +1142,11 @@
         toggleHighlightLinks() {
             this.highlightLinksActive = !this.highlightLinksActive;
             const btn = document.getElementById('a11y-highlight-links-toggle');
-            
+
             if (this.highlightLinksActive) {
                 // Encontrar todos los links (excepto los del widget)
                 const links = document.querySelectorAll('a:not(#accessibility-widget a)');
-                
+
                 links.forEach(link => {
                     if (!link.classList.contains('a11y-link-highlighted')) {
                         link.classList.add('a11y-link-highlighted');
@@ -1152,7 +1154,7 @@
                         link.dataset.a11yOriginalStyle = link.getAttribute('style') || '';
                     }
                 });
-                
+
                 if (btn) {
                     btn.textContent = 'Desactivar Resalte de Enlaces';
                     btn.classList.add('a11y-btn-active');
@@ -1160,11 +1162,11 @@
             } else {
                 // Remover resalte de todos los links
                 const links = document.querySelectorAll('a.a11y-link-highlighted');
-                
+
                 links.forEach(link => {
                     link.classList.remove('a11y-link-highlighted');
                 });
-                
+
                 if (btn) {
                     btn.textContent = 'Resaltar Enlaces';
                     btn.classList.remove('a11y-btn-active');
