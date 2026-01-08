@@ -191,7 +191,7 @@
                             <!-- Lector de Texto (TTS) -->
                             <section class="a11y-section">
                                 <h3>Lector de Texto (TTS)</h3>
-                                <p class="a11y-help-text">Selecciona texto y pulsa "Leer Selección" o usa "Leer Página". Puedes marcar elementos con <code>data-a11y-lang</code> para que se lean en otro idioma.</p>
+                                <p class="a11y-help-text">Selecciona texto y pulsa "Leer Selección" o usa "Leer Página". Puedes seleccionar "Detener" cuando estés listo para detener la lectura.</p>
                                 <div class="a11y-tts-controls">
                                     <button id="a11y-read-selection" class="a11y-btn-primary" aria-label="Leer texto seleccionado" title="Lee el texto seleccionado">Leer Selección</button>
                                     <button id="a11y-read-page" class="a11y-btn-primary" aria-label="Leer toda la página" title="Lee toda la página">Leer Página</button>
@@ -567,6 +567,7 @@
             this.buildReadableElementsList();
             if (!this.readableElements.length) return alert('No se encontró texto para leer.');
             this.autoClosePanel();
+            // Se abrirán automáticamente los modales/diálogos si el usuario interactúa
             this.startFlowReading();
         }
 
@@ -971,6 +972,50 @@
                     e.preventDefault();
                     this.moveVirtualFocus(-1);
                 }
+
+                // 4. Enter en modo lectura por secciones: Activar botones/enlaces
+                if (e.key === 'Enter' && this.sectionReadingMode) {
+                    e.preventDefault();
+                    const currentEl = this.readableElements[this.virtualFocusIndex];
+                    
+                    if (currentEl) {
+                        // Si es un botón o enlace, hacer click
+                        const isButton = currentEl.tagName === 'BUTTON' || 
+                                        currentEl.getAttribute('role') === 'button';
+                        const isLink = currentEl.tagName === 'A' || 
+                                      currentEl.getAttribute('role') === 'link';
+                        
+                        if (isButton || isLink) {
+                            currentEl.click();
+                            
+                            // Esperar a que se abra el modal/contenido (si lo hay)
+                            setTimeout(() => {
+                                const openedModal = this.findOpenedModal();
+                                
+                                if (openedModal) {
+                                    // Leer el título o encabezado del modal si existe
+                                    const modalTitle = openedModal.querySelector('h1, h2, h3, [role="heading"], .modal-title, .title');
+                                    let titleText = '';
+                                    
+                                    if (modalTitle && !this.shouldIgnoreElement(modalTitle)) {
+                                        titleText = modalTitle.textContent.trim();
+                                        if (titleText) titleText += '. ';
+                                    }
+                                    
+                                    // Leer el contenido principal del modal
+                                    const contentText = openedModal.textContent.trim();
+                                    if (contentText) {
+                                        const fullText = titleText + contentText;
+                                        this.speak(fullText, this.defaultLang);
+                                    }
+                                    
+                                    // Reconstruir lista de elementos para que incluya el contenido del modal
+                                    this.buildReadableElementsList();
+                                }
+                            }, 300);
+                        }
+                    }
+                }
             });
         }
 
@@ -996,18 +1041,59 @@
             const elemLang = el.dataset?.a11yLang || el.lang || this.findClosestLang(el) || this.defaultLang;
             let text = '';
             const tag = el.tagName.toLowerCase();
-            if (tag === 'img') text = el.alt ? `Imagen: ${el.alt}` : 'Imagen sin descripción';
-            else if (/h[1-6]/.test(tag)) text = `Encabezado nivel ${tag[1]}. ${el.textContent.trim()}`;
-            else text = el.textContent.trim();
+            
+            if (tag === 'img') {
+                text = el.alt ? `Imagen: ${el.alt}` : 'Imagen sin descripción';
+            } else if (/h[1-6]/.test(tag)) {
+                text = `Encabezado nivel ${tag[1]}. ${el.textContent.trim()}`;
+            } else if (tag === 'button' || el.getAttribute('role') === 'button') {
+                // Si es un botón, leer su texto y agregar instrucción
+                text = `Botón: ${el.textContent.trim()}. Presiona Enter para activar.`;
+            } else if (tag === 'a' || el.getAttribute('role') === 'link') {
+                // Si es un enlace, leer su texto y agregar instrucción
+                text = `Enlace: ${el.textContent.trim()}. Presiona Enter para abrir.`;
+            } else {
+                text = el.textContent.trim();
+            }
+            
             if (!text) return;
+            
             const utter = new SpeechSynthesisUtterance(text);
             utter.lang = elemLang;
             utter.rate = this.currentReadingRate;
             const voices = this.speechSynthesis.getVoices();
             const voice = voices.find(v => v.lang.startsWith(elemLang.split('-')[0])) || voices[0];
             if (voice) utter.voice = voice;
+            
             this.speechSynthesis.cancel();
             this.speechSynthesis.speak(utter);
+        }
+        // ==================== HELPERS PARA DETECTAR CONTENIDO ABIERTO ====================
+        findOpenedModal() {
+            // Selectores comunes para modales, diálogos y overlays
+            const modalSelectors = [
+                '[role="dialog"]',
+                '[role="alertdialog"]',
+                '.modal:not([style*="display: none"])',
+                '.modal-content:not([style*="display: none"])',
+                '[open]',
+                '.overlay:not([style*="display: none"])',
+                '.popup:not([style*="display: none"])',
+                '.drawer:not([style*="display: none"])',
+                '[data-modal]:not([style*="display: none"])'
+            ];
+            
+            for (const selector of modalSelectors) {
+                const element = document.querySelector(selector);
+                if (element && element.offsetHeight > 0 && element.offsetParent !== null) {
+                    // Verificar que sea visible
+                    const style = window.getComputedStyle(element);
+                    if (style.display !== 'none' && style.visibility !== 'hidden') {
+                        return element;
+                    }
+                }
+            }
+            return null;
         }
 
         // ==================== LECTURA DE ELEMENTOS INTERACTIVOS ====================
