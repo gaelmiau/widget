@@ -15,10 +15,10 @@
             // ========== Estado del Widget ==========
             this.isOpen = false;
             this.isSpeaking = false;
-            this.sectionReadingMode = false; // NUEVO: controla si el nav con flechas está activo
-            this.numberedVoiceMode = false; // NUEVO: modo de comandos por voz con números
-            this.readingRulerActive = false; // NUEVO: regleta de lectura
-            this.highlightLinksActive = false; // NUEVO: resalto de hipervínculos
+            this.sectionReadingMode = false; // Controla si el nav con flechas está activo
+            this.numberedVoiceMode = false; // Modo de comandos por voz con números
+            this.readingRulerActive = false; // Regleta de lectura
+            this.highlightLinksActive = false; // Resalto de hipervínculos
 
             // ========== Preferencias ==========
             this.currentTheme = 'default';
@@ -226,8 +226,6 @@
                                     <button id="a11y-numbered-voice-toggle" class="a11y-btn-primary" aria-label="Activar comandos de voz por números" title="Activa números en elementos para control por voz">Activar Comandos por Voz</button>
                                 </div>
                             </section>
-
-                            
 
                             <!-- Reset -->
                             <section class="a11y-section">
