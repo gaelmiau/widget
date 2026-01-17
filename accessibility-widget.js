@@ -19,6 +19,7 @@
             this.numberedVoiceMode = false; // Modo de comandos por voz con números
             this.readingRulerActive = false; // Regleta de lectura
             this.highlightLinksActive = false; // Resalto de hipervínculos
+            this.inputEditMode = false; // Modo de edición en inputs
 
             // ========== Preferencias ==========
             this.currentTheme = 'default';
@@ -99,8 +100,35 @@
         injectStyles() {
             const linkElement = document.createElement('link');
             linkElement.rel = 'stylesheet';
-            linkElement.href = 'accessibility-widget.css';
+            // Obtener la ruta del script actual para cargar CSS desde la misma carpeta
+            const scriptTag = document.querySelector('script[src*="accessibility-widget.js"]');
+            let cssPath = 'accessibility-widget.css';
+            if (scriptTag) {
+                const scriptSrc = scriptTag.src;
+                const scriptDir = scriptSrc.substring(0, scriptSrc.lastIndexOf('/') + 1);
+                cssPath = scriptDir + 'accessibility-widget.css';
+            }
+            linkElement.href = cssPath;
             document.head.appendChild(linkElement);
+
+            // Inyectar estilos CSS inline para modo edición
+            const style = document.createElement('style');
+            style.textContent = `
+                input.a11y-input-edit-mode,
+                textarea.a11y-input-edit-mode,
+                select.a11y-input-edit-mode {
+                    border: 3px solid #FF6B6B !important;
+                    outline: 2px solid #FF6B6B !important;
+                    background-color: #FFF8F8 !important;
+                    box-shadow: 0 0 8px rgba(255, 107, 107, 0.3) !important;
+                }
+                
+                input.a11y-input-edit-mode::placeholder,
+                textarea.a11y-input-edit-mode::placeholder {
+                    color: #FF6B6B;
+                }
+            `;
+            document.head.appendChild(style);
         }
 
         captureOriginalFontSize() {
@@ -665,6 +693,15 @@
                 this.isSpeaking = false;
                 const stopBtn = document.getElementById('a11y-stop-reading');
                 if (stopBtn) stopBtn.disabled = true;
+                // Reiniciar reconocimiento de voz si el modo numerado está activo (escucha continua)
+                if (this.numberedVoiceMode && this.numberedVoiceRecog) {
+                    try {
+                        this.numberedVoiceRecog.start();
+                    } catch (e) {
+                        // Si no se puede reiniciar, iniciar uno nuevo
+                        if (this.numberedVoiceMode) this.startNumberedVoiceRecognition();
+                    }
+                }
             };
             this.currentUtterance = utter;
             this.speechSynthesis.cancel();
@@ -692,7 +729,13 @@
             this.numberedVoiceMode = false;
             this.readingRulerActive = false;
             this.highlightLinksActive = false;
+            this.inputEditMode = false;
             this.stopReading();
+
+            // Remover clase de modo edición si existe
+            document.querySelectorAll('.a11y-input-edit-mode').forEach(el => {
+                el.classList.remove('a11y-input-edit-mode');
+            });
 
             // Regleta de lectura
             if (this.readingRulerActive) this.toggleReadingRuler();
@@ -875,13 +918,19 @@
 
                         const transcript = event.results[i][0].transcript.toLowerCase().trim();
 
-                        // Palabras clave para desactivar
-                        if (transcript.includes('desactivar') || transcript.includes('salir')) {
+                        // Palabras clave para desactivar o cancelar
+                        if (transcript.includes('desactivar') || transcript.includes('salir') || transcript.includes('cancelar')) {
                             this.toggleNumberedVoiceMode();
                             return;
                         }
 
-                        // Buscar números pronunciados
+                        // Palabras clave para cerrar el panel
+                        if (transcript.includes('cerrar') || transcript.includes('close')) {
+                            if (this.isOpen) this.closePanel();
+                            return;
+                        }
+
+                        // Mapa de números (palabras)
                         const numberWords = {
                             'cero': 0, 'zero': 0,
                             'uno': 1, 'one': 1,
@@ -896,30 +945,11 @@
                             'diez': 10, 'ten': 10
                         };
 
-                        // Buscar números directos (0-9)
-                        for (let num = 0; num < this.totalNumberedElements; num++) {
-                            if (transcript.includes(num.toString())) {
-                                // Pausar reconocimiento para evitar que el TTS sea captado
-                                if (this.numberedVoiceRecog) {
-                                    try { this.numberedVoiceRecog.abort(); } catch (e) { }
-                                }
-                                this.handleNumberedVoiceCommand(num);
-                                // Reiniciar reconocimiento tras un breve retardo (si el modo sigue activo)
-                                setTimeout(() => { if (this.numberedVoiceMode) this.startNumberedVoiceRecognition(); }, 800);
-                                return;
-                            }
-                        }
-
-                        // Buscar palabras de números
-                        for (const [word, num] of Object.entries(numberWords)) {
-                            if (transcript.includes(word) && num < this.totalNumberedElements) {
-                                if (this.numberedVoiceRecog) {
-                                    try { this.numberedVoiceRecog.abort(); } catch (e) { }
-                                }
-                                this.handleNumberedVoiceCommand(num);
-                                setTimeout(() => { if (this.numberedVoiceMode) this.startNumberedVoiceRecognition(); }, 800);
-                                return;
-                            }
+                        // Extraer número del transcript usando regex para evitar falsos positivos
+                        const extractedNum = this.extractNumberFromTranscript(transcript, numberWords, this.totalNumberedElements);
+                        if (extractedNum !== null && extractedNum < this.totalNumberedElements) {
+                            this.handleNumberedVoiceCommand(extractedNum);
+                            return;
                         }
 
                     }
@@ -941,6 +971,28 @@
                     this.numberedVoiceRecog.abort();
                 } catch (e) { /* ignore */ }
             }
+        }
+
+        extractNumberFromTranscript(transcript, numberWords, maxNum = 100) {
+            // Primero busca palabras numéricas exactas (cero, uno, dos, etc.) como palabras completas
+            for (const [word, num] of Object.entries(numberWords)) {
+                // Busca la palabra como límite de palabra completa, no substring
+                const regex = new RegExp(`\\b${word}\\b`);
+                if (regex.test(transcript)) {
+                    return num;
+                }
+            }
+
+            // Si no encontró palabra, busca un número dígito aislado como palabra completa
+            // Busca desde 0 hasta maxNum (que es totalNumberedElements o 100 por defecto)
+            for (let num = 0; num < maxNum; num++) {
+                const regex = new RegExp(`\\b${num}\\b`);
+                if (regex.test(transcript)) {
+                    return num;
+                }
+            }
+
+            return null;
         }
 
         handleNumberedVoiceCommand(num) {
@@ -968,18 +1020,59 @@
                 return;
             }
 
-            // Si no es interactivo, leer su contenido
+            // Si no es interactivo, leer su contenido (sin incluir el número del badge)
             const elemLang = element.dataset?.a11yLang || element.lang || this.findClosestLang(element) || this.defaultLang;
-            const text = element.textContent.trim();
+            // Clonar el elemento y remover el badge para obtener el texto sin el número
+            const clonedEl = element.cloneNode(true);
+            const badge = clonedEl.querySelector('.a11y-number-badge');
+            if (badge) badge.remove();
+            const text = clonedEl.textContent.trim();
             if (text) {
                 this.speak(text, elemLang);
             }
         }
 
         // ==================== NAVEGACIÓN ====================
+        // NUEVO: Construir lista de elementos SOLO dentro de un modal
+        buildReadableElementsInModal(modal) {
+            if (!modal) return;
+            
+            const baseSelector = 'p, li, h1, h2, h3, h4, h5, h6, button, a, img[alt], [data-a11y-readable]';
+            const formSelector = 'input[type="text"], input[type="email"], input[type="password"], input[type="search"], input[type="number"], textarea, select';
+            const educationSelector = 'table, fieldset, legend, label, .question, .quiz, .form-group, [data-a11y-form]';
+            
+            const fullSelector = `${baseSelector}, ${formSelector}, ${educationSelector}`;
+            
+            this.readableElements = Array.from(modal.querySelectorAll(fullSelector))
+                .filter(el => {
+                    if (el.dataset && el.dataset.a11yRead === 'false') return false;
+                    if (el.hasAttribute && el.hasAttribute('aria-hidden') && el.getAttribute('aria-hidden') === 'true') return false;
+                    if (el.hidden) return false;
+                    let p = el.parentElement;
+                    while (p) {
+                        if (p.hasAttribute && p.hasAttribute('aria-hidden') && p.getAttribute('aria-hidden') === 'true') return false;
+                        p = p.parentElement;
+                    }
+                    if (el.offsetParent === null) return false;
+                    try {
+                        const st = window.getComputedStyle(el);
+                        if (st && (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0)) return false;
+                    } catch (e) { }
+                    return true;
+                });
+        }
+        
+        // MEJORADO: buildReadableElementsList()
         buildReadableElementsList() {
-            const selector = 'p, li, h1, h2, h3, h4, h5, h6, button, a, img[alt], [data-a11y-readable]';
-            this.readableElements = Array.from(document.querySelectorAll(selector))
+            // Selector EXPANDIDO para captar más contenido educativo
+            const baseSelector = 'p, li, h1, h2, h3, h4, h5, h6, button, a, img[alt], [data-a11y-readable]';
+            const formSelector = 'input[type="text"], input[type="email"], input[type="password"], input[type="search"], input[type="number"], textarea, select, [role="button"]';
+            const educationSelector = 'table, fieldset, legend, label, .question, .quiz, .form-group, [data-a11y-form], .modal-content, [role="dialog"]';
+            const containerSelector = '.card, .alert, .well, [role="region"]';
+            
+            const fullSelector = `${baseSelector}, ${formSelector}, ${educationSelector}, ${containerSelector}`;
+            
+            this.readableElements = Array.from(document.querySelectorAll(fullSelector))
                 .filter(el => {
                     // No leer el propio widget
                     if (el.closest && el.closest('#accessibility-widget')) return false;
@@ -999,85 +1092,195 @@
                         const st = window.getComputedStyle(el);
                         if (st && (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0)) return false;
                     } catch (e) { /* ignore */ }
+                    
+                    // NUEVA LÓGICA: Evitar duplicados (ej: no leer input si su label ya se leyó)
+                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
+                        const label = this.findAssociatedLabel(el);
+                        if (label && this.readableElements.includes(label)) {
+                            return false; // El label ya está en la lista
+                        }
+                    }
+                    
                     return true;
                 });
+        }
+        
+        // NUEVO: Encontrar label asociado a un input
+        findAssociatedLabel(input) {
+            if (!input) return null;
+            const inputId = input.id;
+            if (inputId) {
+                const label = document.querySelector(`label[for="${inputId}"]`);
+                if (label) return label;
+            }
+            // Buscar label padre
+            let parent = input.parentElement;
+            while (parent) {
+                if (parent.tagName === 'LABEL') return parent;
+                parent = parent.parentElement;
+            }
+            return null;
         }
 
         enableKeyboardNavigation() {
             document.addEventListener('keydown', (e) => {
                 const el = document.activeElement;
 
-                // 1. Enter/Space en botones y enlaces
-                if ((e.key === 'Enter' || e.key === ' ') && el &&
-                    (el.tagName === 'BUTTON' || el.tagName === 'A' || el.getAttribute('role') === 'button')) {
-                    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') {
+                // 0. Manejo de modo edición en inputs
+                if (this.inputEditMode) {
+                    // En modo edición, Escape sale
+                    if (e.key === 'Escape') {
+                        this.exitInputEditMode(el);
                         e.preventDefault();
-                        el.click();
+                        return;
+                    }
+                    // En modo edición, permitir escritura normal
+                    return;
+                }
+
+                // 1. FLECHAS: Solo funcionan si sectionReadingMode está ACTIVO
+                if (!this.sectionReadingMode) {
+                    // Si no estamos en modo lectura por secciones, no procesar flechas
+                    if (['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(e.key)) {
+                        return;
                     }
                 }
 
-                // 2. Escape para cerrar panel
-                if (e.key === 'Escape' && this.isOpen) {
-                    this.closePanel();
-                }
-
-                // 3. FLECHAS: Solo funcionan si sectionReadingMode está ACTIVO
-                if (!this.sectionReadingMode) return;
-
-                if (['ArrowDown', 'ArrowRight'].includes(e.key)) {
+                // Navegar con flechas si sectionReadingMode está activo
+                if (this.sectionReadingMode && ['ArrowDown', 'ArrowRight'].includes(e.key)) {
                     e.preventDefault();
                     this.moveVirtualFocus(1);
+                    return;
                 }
 
-                if (['ArrowUp', 'ArrowLeft'].includes(e.key)) {
+                if (this.sectionReadingMode && ['ArrowUp', 'ArrowLeft'].includes(e.key)) {
                     e.preventDefault();
                     this.moveVirtualFocus(-1);
+                    return;
                 }
 
-                // 4. Enter en modo lectura por secciones: Activar botones/enlaces
-                if (e.key === 'Enter' && this.sectionReadingMode) {
+                // 2. Enter en modo lectura por secciones: Activar elementos
+                if (e.key === 'Enter' && this.sectionReadingMode && this.virtualFocusIndex >= 0) {
                     e.preventDefault();
                     const currentEl = this.readableElements[this.virtualFocusIndex];
+                    if (!currentEl) return;
 
-                    if (currentEl) {
-                        // Si es un botón o enlace, hacer click
-                        const isButton = currentEl.tagName === 'BUTTON' ||
-                            currentEl.getAttribute('role') === 'button';
-                        const isLink = currentEl.tagName === 'A' ||
-                            currentEl.getAttribute('role') === 'link';
+                    const tag = currentEl.tagName.toLowerCase();
+                    const type = currentEl.type || '';
 
-                        if (isButton || isLink) {
-                            currentEl.click();
+                    // Botones y enlaces
+                    if (tag === 'button' || tag === 'a' || currentEl.getAttribute('role') === 'button') {
+                        currentEl.click();
+                        
+                        // Esperar a que se abra el modal/contenido (si lo hay)
+                        setTimeout(() => {
+                            const openedModal = this.findOpenedModal();
 
-                            // Esperar a que se abra el modal/contenido (si lo hay)
-                            setTimeout(() => {
-                                const openedModal = this.findOpenedModal();
+                            if (openedModal) {
+                                // Reconstruir lista de elementos SOLO del modal
+                                this.buildReadableElementsInModal(openedModal);
+                                this.virtualFocusIndex = 0; // Resetear índice al modal
+                                
+                                // Leer el título o encabezado del modal si existe
+                                const modalTitle = openedModal.querySelector('h1, h2, h3, [role="heading"], .modal-title, .title');
+                                let titleText = '';
 
-                                if (openedModal) {
-                                    // Leer el título o encabezado del modal si existe
-                                    const modalTitle = openedModal.querySelector('h1, h2, h3, [role="heading"], .modal-title, .title');
-                                    let titleText = '';
-
-                                    if (modalTitle && !this.shouldIgnoreElement(modalTitle)) {
-                                        titleText = modalTitle.textContent.trim();
-                                        if (titleText) titleText += '. ';
-                                    }
-
-                                    // Leer el contenido principal del modal
-                                    const contentText = openedModal.textContent.trim();
-                                    if (contentText) {
-                                        const fullText = titleText + contentText;
-                                        this.speak(fullText, this.defaultLang);
-                                    }
-
-                                    // Reconstruir lista de elementos para que incluya el contenido del modal
-                                    this.buildReadableElementsList();
+                                if (modalTitle && !this.shouldIgnoreElement(modalTitle)) {
+                                    titleText = modalTitle.textContent.trim();
+                                    if (titleText) titleText += '. ';
                                 }
-                            }, 300);
+
+                                // Leer el contenido principal del modal
+                                const contentText = openedModal.textContent.trim();
+                                if (contentText) {
+                                    const fullText = titleText + contentText;
+                                    this.speak(fullText, this.defaultLang);
+                                }
+                            } else {
+                                // Reconstruir lista general si no hay modal
+                                this.buildReadableElementsList();
+                            }
+                        }, 300);
+                    }
+                    // Inputs editables
+                    else if ((tag === 'input' && ['text', 'email', 'password', 'search', 'number', 'tel'].includes(type)) || tag === 'textarea') {
+                        this.enterInputEditMode(currentEl);
+                    }
+                    // Selects
+                    else if (tag === 'select') {
+                        currentEl.click();
+                        currentEl.focus();
+                    }
+                    return;
+                }
+
+                // 3. Escape para cerrar panel O cerrar modal si hay uno abierto
+                if (e.key === 'Escape') {
+                    const openedModal = this.findOpenedModal();
+                    if (openedModal && this.sectionReadingMode) {
+                        // Si hay modal abierto y estamos en modo de secciones, cerrarlo
+                        const closeBtn = openedModal.querySelector('[data-dismiss="modal"], .close, .btn-close, [aria-label*="Cerrar"], [aria-label*="Close"]');
+                        if (closeBtn) {
+                            closeBtn.click();
+                            // Reconstruir lista general
+                            this.buildReadableElementsList();
+                            return;
                         }
+                    }
+                    if (this.isOpen) {
+                        this.closePanel();
+                    }
+                }
+
+                // 4. Enter/Space en botones (solo fuera de modo lectura por secciones)
+                if (!this.sectionReadingMode && (e.key === 'Enter' || e.key === ' ') && el &&
+                    (el.tagName === 'BUTTON' || el.tagName === 'A' || el.getAttribute('role') === 'button')) {
+                    // Solo permitir si es el botón toggle del widget
+                    if (el.id === 'a11y-toggle-btn') {
+                        e.preventDefault();
+                        this.togglePanel();
                     }
                 }
             });
+        }
+
+        // Entrar en modo edición de input
+        enterInputEditMode(inputEl) {
+            if (!inputEl) return;
+            this.inputEditMode = true;
+            inputEl.classList.add('a11y-input-edit-mode');
+            inputEl.focus();
+
+            const tag = inputEl.tagName.toLowerCase();
+            const label = this.findAssociatedLabel(inputEl);
+            const labelText = label ? label.textContent.trim() : '';
+            const placeholder = inputEl.placeholder || '';
+            const value = inputEl.value || '';
+
+            let feedbackText = '';
+            if (tag === 'input') {
+                const type = inputEl.type || 'texto';
+                feedbackText = `Modo edición activado. ${labelText ? labelText + '.' : ''} Entrada de ${type}. ${value ? 'Contiene: ' + value : placeholder ? 'Pista: ' + placeholder : 'Vacío'}. Presiona Escape para salir.`;
+            } else if (tag === 'textarea') {
+                feedbackText = `Modo edición activado. ${labelText ? labelText + '.' : ''} Área de texto. ${value ? 'Contiene: ' + value : 'Vacío'}. Presiona Escape para salir.`;
+            }
+
+            if (feedbackText) {
+                this.speak(feedbackText, this.findClosestLang(inputEl) || this.defaultLang);
+            }
+        }
+
+        // Salir de modo edición de input
+        exitInputEditMode(inputEl) {
+            if (!inputEl) return;
+            this.inputEditMode = false;
+            inputEl.classList.remove('a11y-input-edit-mode');
+            // Remover el focus completamente para evitar que siga escribiendo
+            inputEl.blur();
+
+            const finalValue = inputEl.value || '';
+            const feedbackText = `Modo edición cerrado. ${finalValue ? 'Valor guardado: ' + finalValue : 'Sin cambios'}. Regresando a navegación.`;
+            this.speak(feedbackText, this.findClosestLang(inputEl) || this.defaultLang);
         }
 
         moveVirtualFocus(step) {
@@ -1095,6 +1298,14 @@
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
             this.moveHighlightToElement(el);
             this.moveReadingLineToElement(el);
+            
+            // NUEVO: Leer con contexto (si es input, incluir label)
+            this.readElementContentWithContext(el);
+        }
+        
+        // NUEVO: Leer elemento con su contexto (ej: label + input)
+        readElementContentWithContext(el) {
+            // Usar la lógica mejorada de readElementContent que ya incluye contexto
             this.readElementContent(el);
         }
 
@@ -1102,19 +1313,74 @@
             const elemLang = el.dataset?.a11yLang || el.lang || this.findClosestLang(el) || this.defaultLang;
             let text = '';
             const tag = el.tagName.toLowerCase();
+            const type = el.type || '';
 
-            if (tag === 'img') {
-                text = el.alt ? `Imagen: ${el.alt}` : 'Imagen sin descripción';
+            // Manejo especial para elementos complejos
+            if (tag === 'table') {
+                text = this.readTable(el);
+            } else if (tag === 'fieldset') {
+                text = this.readFieldset(el);
+            } else if (tag === 'input' && ['text', 'email', 'password', 'search', 'number', 'tel'].includes(type)) {
+                // Input de texto/email/password/etc
+                const label = this.findAssociatedLabel(el);
+                const labelText = label ? label.textContent.trim() : '';
+                const placeholder = el.placeholder || '';
+                const value = el.value || '';
+                const required = el.required ? ' requerido' : '';
+                text = `Entrada de ${type}: ${labelText}. ${value ? 'Valor actual: ' + value : placeholder ? 'Pista: ' + placeholder : 'Vacío'}${required}. Presiona Enter para escribir, Escape para salir.`;
+            } else if (tag === 'textarea') {
+                // Textarea
+                const label = this.findAssociatedLabel(el);
+                const labelText = label ? label.textContent.trim() : '';
+                const placeholder = el.placeholder || '';
+                const value = el.value || '';
+                const required = el.required ? ' requerido' : '';
+                text = `Área de texto: ${labelText}. ${value ? 'Valor actual: ' + value : placeholder ? 'Pista: ' + placeholder : 'Vacío'}${required}. Presiona Enter para escribir, Escape para salir.`;
+            } else if (tag === 'select') {
+                // Select / combo box
+                const label = this.findAssociatedLabel(el);
+                const labelText = label ? label.textContent.trim() : '';
+                const selectedOption = el.options[el.selectedIndex];
+                const selectedText = selectedOption ? selectedOption.textContent.trim() : 'Sin selección';
+                const required = el.required ? ' requerido' : '';
+                const optionCount = el.options.length;
+                text = `Selector: ${labelText}. Seleccionado: ${selectedText}. ${optionCount} opciones disponibles${required}. Presiona Enter para abrir opciones.`;
+            } else if (tag === 'button') {
+                // Botón
+                text = `Botón: ${el.textContent.trim()}. Presiona Enter para activar.`;
+            } else if (tag === 'a' && el.href) {
+                // Enlace
+                const href = el.href || '';
+                const isExternal = href && !href.startsWith(window.location.origin);
+                const external = isExternal ? ' Enlace externo.' : '';
+                text = `Enlace: ${el.textContent.trim()}.${external} Presiona Enter para navegar.`;
+            } else if (tag === 'img' && el.alt) {
+                // Imagen con alt
+                text = `Imagen: ${el.alt}`;
+            } else if (tag === 'label') {
+                text = this.readLabel(el);
+            } else if (el.classList.contains('question') || el.classList.contains('quiz')) {
+                text = this.readQuestion(el);
+            } else if (tag === 'audio' || tag === 'video') {
+                text = this.readMedia(el);
+            } else if (el.getAttribute('role') === 'button') {
+                text = `Botón: ${el.textContent.trim()}. Presiona Enter para activar.`;
+            } else if (el.getAttribute('role') === 'link' || el.getAttribute('role') === 'link') {
+                text = `Enlace: ${el.textContent.trim()}. Presiona Enter para navegar.`;
+            } else if (el.hasAttribute('aria-label')) {
+                text = el.getAttribute('aria-label');
+            } else if (el.hasAttribute('aria-describedby')) {
+                const descId = el.getAttribute('aria-describedby');
+                const descEl = document.getElementById(descId);
+                if (descEl) text = descEl.textContent.trim();
             } else if (/h[1-6]/.test(tag)) {
                 text = `Encabezado nivel ${tag[1]}. ${el.textContent.trim()}`;
-            } else if (tag === 'button' || el.getAttribute('role') === 'button') {
-                // Si es un botón, leer su texto y agregar instrucción
-                text = `Botón: ${el.textContent.trim()}. Presiona Enter para activar.`;
-            } else if (tag === 'a' || el.getAttribute('role') === 'link') {
-                // Si es un enlace, leer su texto y agregar instrucción
-                text = `Enlace: ${el.textContent.trim()}. Presiona Enter para abrir.`;
             } else {
-                text = el.textContent.trim();
+                // Texto genérico
+                const textContent = el.textContent.trim();
+                if (textContent) {
+                    text = textContent;
+                }
             }
 
             if (!text) return;
@@ -1129,29 +1395,136 @@
             this.speechSynthesis.cancel();
             this.speechSynthesis.speak(utter);
         }
+        
+        // NUEVO: Leer tabla
+        readTable(table) {
+            let result = 'Tabla. ';
+            const rows = table.querySelectorAll('tr');
+            let rowCount = 0;
+            
+            rows.forEach((row, idx) => {
+                const cells = row.querySelectorAll('th, td');
+                const rowText = Array.from(cells).map(cell => cell.textContent.trim()).join(', ');
+                if (rowText.trim()) {
+                    if (idx === 0) {
+                        result += `Encabezados: ${rowText}. `;
+                    } else {
+                        result += `Fila ${rowCount + 1}: ${rowText}. `;
+                        rowCount++;
+                    }
+                }
+            });
+            return result || 'Tabla vacía';
+        }
+        
+        // NUEVO: Leer fieldset (grupo de formulario)
+        readFieldset(fieldset) {
+            const legend = fieldset.querySelector('legend');
+            let result = legend ? `Grupo de formulario: ${legend.textContent.trim()}. ` : 'Grupo de formulario. ';
+            return result;
+        }
+        
+        // NUEVO: Leer label
+        readLabel(label) {
+            const forId = label.getAttribute('for');
+            let result = label.textContent.trim();
+            if (forId) {
+                const input = document.getElementById(forId);
+                if (input) {
+                    result += `. ${this.readFormElement(input, true)}`;
+                }
+            }
+            return result;
+        }
+        
+        // NUEVO: Leer elemento de formulario
+        readFormElement(input, skipText = false) {
+            let result = '';
+            const label = this.findAssociatedLabel(input);
+            const type = input.type || 'texto';
+            const placeholder = input.placeholder || '';
+            const value = input.value || '';
+            const required = input.required ? ' requerido' : '';
+            
+            if (label && !skipText) {
+                result = `${label.textContent.trim()}. `;
+            }
+            
+            if (input.tagName === 'SELECT') {
+                result += `Lista desplegable${required}. `;
+                const options = input.querySelectorAll('option');
+                if (options.length > 0) {
+                    result += `Opciones: ${Array.from(options).map(o => o.textContent.trim()).join(', ')}`;
+                }
+            } else if (input.tagName === 'TEXTAREA') {
+                result += `Área de texto${required}. ${placeholder ? `Sugerencia: ${placeholder}. ` : ''}${value ? `Contenido actual: ${value}` : 'Vacío'}`;
+            } else {
+                result += `Entrada de tipo ${type}${required}. ${placeholder ? `Sugerencia: ${placeholder}` : 'Sin sugerencia'}`;
+            }
+            
+            return result.trim();
+        }
+        
+        // NUEVO: Leer pregunta (para cuestionarios)
+        readQuestion(question) {
+            const questionText = question.textContent.trim();
+            const options = question.querySelectorAll('input[type="radio"], input[type="checkbox"], .option, [data-option]');
+            
+            let result = `Pregunta: ${questionText}. `;
+            if (options.length > 0) {
+                result += `Opciones: ${Array.from(options).map((opt, idx) => {
+                    const label = opt.closest('label') ? opt.closest('label').textContent.trim() : opt.textContent.trim();
+                    return label || `Opción ${idx + 1}`;
+                }).join(', ')}`;
+            }
+            return result;
+        }
+        
+        // NUEVO: Leer media (audio/video)
+        readMedia(media) {
+            const src = media.src || media.querySelector('source')?.src || '';
+            const title = media.title || media.getAttribute('aria-label') || 'Archivo multimedia';
+            const type = media.tagName.toLowerCase();
+            return `${type === 'audio' ? 'Audio' : 'Video'}: ${title}. ${src ? `URL: ${src}` : 'Sin fuente especificada'}`;
+        }
         // ==================== HELPERS PARA DETECTAR CONTENIDO ABIERTO ====================
         findOpenedModal() {
-            // Selectores comunes para modales, diálogos y overlays
+            // Selectores MEJORADOS para detectar múltiples tipos de modales
             const modalSelectors = [
-                '[role="dialog"]',
-                '[role="alertdialog"]',
-                '.modal:not([style*="display: none"])',
+                // Bootstrap modales (detectar .show que es la clase que agrega Bootstrap cuando se abre)
+                '.modal.show',
+                '.modal.fade.show',
+                // Modales genéricos
+                '[role="dialog"]:not([style*="display: none"])',
+                '[role="alertdialog"]:not([style*="display: none"])',
+                '[aria-modal="true"]',
+                // Dialog HTML5
+                'dialog[open]',
+                // Clases comunes
                 '.modal-content:not([style*="display: none"])',
-                '[open]',
+                '.modal:not([style*="display: none"])',
                 '.overlay:not([style*="display: none"])',
                 '.popup:not([style*="display: none"])',
                 '.drawer:not([style*="display: none"])',
-                '[data-modal]:not([style*="display: none"])'
+                '[data-modal]:not([style*="display: none"])',
+                // Para LETA-2024 y topic4_4
+                '.modal-dialog:not([style*="display: none"])',
+                '[data-a11y-modal]'
             ];
 
             for (const selector of modalSelectors) {
-                const element = document.querySelector(selector);
-                if (element && element.offsetHeight > 0 && element.offsetParent !== null) {
-                    // Verificar que sea visible
-                    const style = window.getComputedStyle(element);
-                    if (style.display !== 'none' && style.visibility !== 'hidden') {
-                        return element;
+                try {
+                    const elements = document.querySelectorAll(selector);
+                    for (const element of elements) {
+                        if (element && element.offsetHeight > 0 && element.offsetParent !== null) {
+                            const style = window.getComputedStyle(element);
+                            if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) !== 0) {
+                                return element;
+                            }
+                        }
                     }
+                } catch (e) {
+                    // Ignorar errores de selector
                 }
             }
             return null;
