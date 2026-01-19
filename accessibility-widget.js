@@ -26,6 +26,11 @@
             this.sliderOpenMode = false; // Modo de navegación en slider abierto
             this.currentSliderElement = null; // Elemento slider actualmente navegado
 
+            // ========== Gestión de Modales ==========
+            this.savedVirtualFocusIndex = -1; // Guardar índice antes de abrir modal
+            this.isModalOpen = false; // Flag para saber si hay modal abierto
+            this.modalCheckInterval = null; // Intervalo para detectar cierre de modal
+
             // ========== Preferencias ==========
             this.currentTheme = 'default';
             this.currentFontSize = 'medium';
@@ -1244,6 +1249,10 @@
                             const openedModal = this.findOpenedModal();
 
                             if (openedModal) {
+                                // ✨ NUEVO: Guardar posición actual antes de entrar en modal
+                                this.savedVirtualFocusIndex = this.virtualFocusIndex;
+                                this.isModalOpen = true;
+                                
                                 // Reconstruir lista de elementos SOLO del modal
                                 this.buildReadableElementsInModal(openedModal);
                                 this.virtualFocusIndex = 0; // Resetear índice al modal
@@ -1263,6 +1272,9 @@
                                     const fullText = titleText + contentText;
                                     this.speak(fullText, this.defaultLang);
                                 }
+                                
+                                // ✨ NUEVO: Empezar a monitorear el cierre del modal
+                                this.startMonitoringModalClosure();
                             } else {
                                 // Reconstruir lista general si no hay modal
                                 this.buildReadableElementsList();
@@ -1303,8 +1315,10 @@
                         const closeBtn = openedModal.querySelector('[data-dismiss="modal"], .close, .btn-close, [aria-label*="Cerrar"], [aria-label*="Close"]');
                         if (closeBtn) {
                             closeBtn.click();
-                            // Reconstruir lista general
-                            this.buildReadableElementsList();
+                            // ✨ NUEVO: Esperar a que se cierre y restaurar posición
+                            setTimeout(() => {
+                                this.handleModalClosure();
+                            }, 300);
                             return;
                         }
                     }
@@ -1694,6 +1708,16 @@
             this.readElementContent(el);
         }
 
+        // NUEVO: Obtener texto del elemento sin incluir badge de voz
+        getElementTextWithoutBadge(el) {
+            // Clonar el elemento para no modificar el original
+            const cloned = el.cloneNode(true);
+            // Remover badge numérico si existe
+            const badge = cloned.querySelector('.a11y-number-badge');
+            if (badge) badge.remove();
+            return cloned.textContent.trim();
+        }
+
         readElementContent(el) {
             const elemLang = el.dataset?.a11yLang || el.lang || this.findClosestLang(el) || this.defaultLang;
             let text = '';
@@ -1731,14 +1755,16 @@
                 const optionCount = el.options.length;
                 text = `Selector: ${labelText}. Seleccionado: ${selectedText}. ${optionCount} opciones disponibles${required}. Presiona Enter para abrir opciones.`;
             } else if (tag === 'button') {
-                // Botón
-                text = `Botón: ${el.textContent.trim()}. Presiona Enter para activar.`;
+                // Botón - SIN incluir el badge numérico
+                const buttonText = this.getElementTextWithoutBadge(el);
+                text = `Botón: ${buttonText}. Presiona Enter para activar.`;
             } else if (tag === 'a' && el.href) {
-                // Enlace
+                // Enlace - SIN incluir el badge numérico
                 const href = el.href || '';
                 const isExternal = href && !href.startsWith(window.location.origin);
                 const external = isExternal ? ' Enlace externo.' : '';
-                text = `Enlace: ${el.textContent.trim()}.${external} Presiona Enter para navegar.`;
+                const linkText = this.getElementTextWithoutBadge(el);
+                text = `Enlace: ${linkText}.${external} Presiona Enter para navegar.`;
             } else if (tag === 'img' && el.alt) {
                 // Imagen con alt
                 text = `Imagen: ${el.alt}`;
@@ -1749,9 +1775,13 @@
             } else if (tag === 'audio' || tag === 'video') {
                 text = this.readMedia(el);
             } else if (el.getAttribute('role') === 'button') {
-                text = `Botón: ${el.textContent.trim()}. Presiona Enter para activar.`;
+                // Botón con role attribute - SIN incluir el badge numérico
+                const buttonText = this.getElementTextWithoutBadge(el);
+                text = `Botón: ${buttonText}. Presiona Enter para activar.`;
             } else if (el.getAttribute('role') === 'link' || el.getAttribute('role') === 'link') {
-                text = `Enlace: ${el.textContent.trim()}. Presiona Enter para navegar.`;
+                // Link con role attribute - SIN incluir el badge numérico
+                const linkText = this.getElementTextWithoutBadge(el);
+                text = `Enlace: ${linkText}. Presiona Enter para navegar.`;
             } else if (el.hasAttribute('aria-label')) {
                 text = el.getAttribute('aria-label');
             } else if (el.hasAttribute('aria-describedby')) {
@@ -1759,10 +1789,12 @@
                 const descEl = document.getElementById(descId);
                 if (descEl) text = descEl.textContent.trim();
             } else if (/h[1-6]/.test(tag)) {
-                text = `Encabezado nivel ${tag[1]}. ${el.textContent.trim()}`;
+                // Encabezado - SIN incluir el badge numérico
+                const headingText = this.getElementTextWithoutBadge(el);
+                text = `Encabezado nivel ${tag[1]}. ${headingText}`;
             } else {
-                // Texto genérico
-                const textContent = el.textContent.trim();
+                // Texto genérico - SIN incluir el badge numérico
+                const textContent = this.getElementTextWithoutBadge(el);
                 if (textContent) {
                     text = textContent;
                 }
@@ -1934,6 +1966,58 @@
                 }
             }
             return null;
+        }
+
+        // ✨ NUEVO: Empezar a monitorear el cierre del modal
+        startMonitoringModalClosure() {
+            if (this.modalCheckInterval) clearInterval(this.modalCheckInterval);
+            
+            // Chequear cada 500ms si el modal se cerró
+            this.modalCheckInterval = setInterval(() => {
+                const openedModal = this.findOpenedModal();
+                
+                if (!openedModal && this.isModalOpen) {
+                    // El modal se cerró
+                    clearInterval(this.modalCheckInterval);
+                    this.modalCheckInterval = null;
+                    this.handleModalClosure();
+                }
+            }, 500);
+        }
+
+        // ✨ NUEVO: Manejar el cierre del modal y restaurar posición
+        handleModalClosure() {
+            if (!this.isModalOpen) return;
+            
+            this.isModalOpen = false;
+            
+            // Restaurar la lista de elementos general
+            this.buildReadableElementsList();
+            
+            // Restaurar el índice guardado
+            if (this.savedVirtualFocusIndex >= 0 && this.savedVirtualFocusIndex < this.readableElements.length) {
+                this.virtualFocusIndex = this.savedVirtualFocusIndex;
+                const restoredEl = this.readableElements[this.virtualFocusIndex];
+                
+                if (restoredEl) {
+                    // Mover highlight al elemento restaurado
+                    restoredEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    this.moveHighlightToElement(restoredEl);
+                    this.moveReadingLineToElement(restoredEl);
+                    
+                    // Leer el elemento restaurado para confirmar
+                    this.readElementContentWithContext(restoredEl);
+                }
+            } else {
+                // Si no hay índice guardado válido, leer el primer elemento
+                if (this.readableElements.length > 0) {
+                    this.virtualFocusIndex = 0;
+                    this.readElementContentWithContext(this.readableElements[0]);
+                }
+            }
+            
+            // Limpiar estado
+            this.savedVirtualFocusIndex = -1;
         }
 
         // ==================== LECTURA DE ELEMENTOS INTERACTIVOS ====================
