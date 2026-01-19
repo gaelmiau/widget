@@ -807,12 +807,20 @@
                 }
                 const el = this.readableElements[this.virtualFocusIndex];
                 const elemLang = el.dataset?.a11yLang || el.lang || this.findClosestLang(el) || this.defaultLang;
-                const tag = el.tagName.toLowerCase();
-                const text = el.textContent.trim();
+
+                // Usar la función que extrae el texto inteligentemente
+                const text = this.getElementReadableText(el);
 
                 this.moveHighlightToElement(el);
                 this.moveReadingLineToElement(el);
                 el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                // Si no hay texto para leer, pasar al siguiente
+                if (!text) {
+                    this.virtualFocusIndex++;
+                    readNext();
+                    return;
+                }
 
                 const utter = new SpeechSynthesisUtterance(text);
                 utter.lang = elemLang;
@@ -1718,8 +1726,9 @@
             return cloned.textContent.trim();
         }
 
-        readElementContent(el) {
-            const elemLang = el.dataset?.a11yLang || el.lang || this.findClosestLang(el) || this.defaultLang;
+        // ✨ NUEVO: Extraer texto legible de un elemento (sin hablar)
+        // Usado por tanto "Lectura por Secciones" como "Leer Página"
+        getElementReadableText(el) {
             let text = '';
             const tag = el.tagName.toLowerCase();
             const type = el.type || '';
@@ -1736,7 +1745,7 @@
                 const placeholder = el.placeholder || '';
                 const value = el.value || '';
                 const required = el.required ? ' requerido' : '';
-                text = `Entrada de ${type}: ${labelText}. ${value ? 'Valor actual: ' + value : placeholder ? 'Pista: ' + placeholder : 'Vacío'}${required}. Presiona Enter para escribir, Escape para salir.`;
+                text = `Entrada de ${type}: ${labelText}. ${value ? 'Valor actual: ' + value : placeholder ? 'Pista: ' + placeholder : 'Vacío'}${required}`;
             } else if (tag === 'textarea') {
                 // Textarea
                 const label = this.findAssociatedLabel(el);
@@ -1744,7 +1753,7 @@
                 const placeholder = el.placeholder || '';
                 const value = el.value || '';
                 const required = el.required ? ' requerido' : '';
-                text = `Área de texto: ${labelText}. ${value ? 'Valor actual: ' + value : placeholder ? 'Pista: ' + placeholder : 'Vacío'}${required}. Presiona Enter para escribir, Escape para salir.`;
+                text = `Área de texto: ${labelText}. ${value ? 'Valor actual: ' + value : placeholder ? 'Pista: ' + placeholder : 'Vacío'}${required}`;
             } else if (tag === 'select') {
                 // Select / combo box
                 const label = this.findAssociatedLabel(el);
@@ -1753,18 +1762,18 @@
                 const selectedText = selectedOption ? selectedOption.textContent.trim() : 'Sin selección';
                 const required = el.required ? ' requerido' : '';
                 const optionCount = el.options.length;
-                text = `Selector: ${labelText}. Seleccionado: ${selectedText}. ${optionCount} opciones disponibles${required}. Presiona Enter para abrir opciones.`;
+                text = `Selector: ${labelText}. Seleccionado: ${selectedText}. ${optionCount} opciones disponibles${required}`;
             } else if (tag === 'button') {
                 // Botón - SIN incluir el badge numérico
                 const buttonText = this.getElementTextWithoutBadge(el);
-                text = `Botón: ${buttonText}. Presiona Enter para activar.`;
+                text = `Botón: ${buttonText}`;
             } else if (tag === 'a' && el.href) {
                 // Enlace - SIN incluir el badge numérico
                 const href = el.href || '';
                 const isExternal = href && !href.startsWith(window.location.origin);
                 const external = isExternal ? ' Enlace externo.' : '';
                 const linkText = this.getElementTextWithoutBadge(el);
-                text = `Enlace: ${linkText}.${external} Presiona Enter para navegar.`;
+                text = `Enlace: ${linkText}.${external}`;
             } else if (tag === 'img' && el.alt) {
                 // Imagen con alt
                 text = `Imagen: ${el.alt}`;
@@ -1777,11 +1786,11 @@
             } else if (el.getAttribute('role') === 'button') {
                 // Botón con role attribute - SIN incluir el badge numérico
                 const buttonText = this.getElementTextWithoutBadge(el);
-                text = `Botón: ${buttonText}. Presiona Enter para activar.`;
-            } else if (el.getAttribute('role') === 'link' || el.getAttribute('role') === 'link') {
+                text = `Botón: ${buttonText}`;
+            } else if (el.getAttribute('role') === 'link') {
                 // Link con role attribute - SIN incluir el badge numérico
                 const linkText = this.getElementTextWithoutBadge(el);
-                text = `Enlace: ${linkText}. Presiona Enter para navegar.`;
+                text = `Enlace: ${linkText}`;
             } else if (el.hasAttribute('aria-label')) {
                 text = el.getAttribute('aria-label');
             } else if (el.hasAttribute('aria-describedby')) {
@@ -1799,6 +1808,13 @@
                     text = textContent;
                 }
             }
+
+            return text;
+        }
+
+        readElementContent(el) {
+            const elemLang = el.dataset?.a11yLang || el.lang || this.findClosestLang(el) || this.defaultLang;
+            const text = this.getElementReadableText(el);
 
             if (!text) return;
 
