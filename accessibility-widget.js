@@ -23,6 +23,8 @@
             this.selectOpenMode = false; // Modo de navegación en select abierto
             this.currentSelectElement = null; // Elemento select actualmente abierto
             this.currentOptionIndex = -1; // Índice de la opción actualmente resaltada
+            this.sliderOpenMode = false; // Modo de navegación en slider abierto
+            this.currentSliderElement = null; // Elemento slider actualmente navegado
 
             // ========== Preferencias ==========
             this.currentTheme = 'default';
@@ -1075,11 +1077,12 @@
             const formSelector = 'input[type="text"], input[type="email"], input[type="password"], input[type="search"], input[type="number"], textarea, select, [role="button"]';
             const educationSelector = 'table, fieldset, legend, .question, .quiz, .form-group, [data-a11y-form], .modal-content, [role="dialog"]';
             const mediaSelector = 'audio, video';
+            const sliderSelector = '.swiper, .carousel, [role="region"][aria-roledescription="carousel"]';
             const containerSelector = '.card, .alert, .well, [role="region"]';
             
             // Nota: Removimos "label" del educationSelector para evitar duplicados
             // Los labels se leerán como parte de sus inputs/selects asociados
-            const fullSelector = `${baseSelector}, ${formSelector}, ${educationSelector}, ${mediaSelector}, ${containerSelector}`;
+            const fullSelector = `${baseSelector}, ${formSelector}, ${educationSelector}, ${mediaSelector}, ${sliderSelector}, ${containerSelector}`;
             
             this.readableElements = Array.from(document.querySelectorAll(fullSelector))
                 .filter(el => {
@@ -1173,6 +1176,43 @@
                     }
                 }
 
+                // 2.5 MANEJO DE SLIDERS - Si estamos en modo de navegación de slider
+                if (this.sliderOpenMode && this.currentSliderElement) {
+                    // Navegar slides con flechas
+                    if (['ArrowRight', 'ArrowDown'].includes(e.key)) {
+                        e.preventDefault();
+                        this.navigateSlider(this.currentSliderElement, 'next');
+                        return;
+                    }
+                    if (['ArrowLeft', 'ArrowUp'].includes(e.key)) {
+                        e.preventDefault();
+                        this.navigateSlider(this.currentSliderElement, 'prev');
+                        return;
+                    }
+                    // Escape para salir del modo slider
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        this.exitSliderMode();
+                        return;
+                    }
+                    // Enter para interactuar con contenido del slide
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        this.interactWithSlideContent();
+                        return;
+                    }
+                    // Tab para salir del slider
+                    if (e.key === 'Tab') {
+                        e.preventDefault();
+                        this.exitSliderMode();
+                        // Mover al siguiente elemento
+                        this.moveVirtualFocus(1);
+                        return;
+                    }
+                    // No permitir otras acciones en modo slider
+                    return;
+                }
+
                 // Navegar con flechas si sectionReadingMode está activo
                 if (this.sectionReadingMode && ['ArrowDown', 'ArrowRight'].includes(e.key)) {
                     e.preventDefault();
@@ -1241,11 +1281,22 @@
                     else if (tag === 'audio' || tag === 'video') {
                         this.toggleMediaPlayback(currentEl);
                     }
+                    // Swipers/Sliders - MEJORADO: Entrar en modo slider en lugar de solo navegar
+                    else if (currentEl.classList.contains('swiper') || currentEl.classList.contains('carousel') || currentEl.getAttribute('role') === 'region') {
+                        this.enterSliderMode(currentEl);
+                    }
                     return;
                 }
 
                 // 4. Escape para cerrar panel O cerrar modal si hay uno abierto
                 if (e.key === 'Escape') {
+                    // Primero chequear si estamos en modo slider
+                    if (this.sliderOpenMode && this.currentSliderElement) {
+                        e.preventDefault();
+                        this.exitSliderMode();
+                        return;
+                    }
+                    
                     const openedModal = this.findOpenedModal();
                     if (openedModal && this.sectionReadingMode) {
                         // Si hay modal abierto y estamos en modo de secciones, cerrarlo
@@ -1434,6 +1485,187 @@
                 const errorText = `No se pudo reproducir ${typeLabel.toLowerCase()}: ${title}`;
                 this.speak(errorText, lang);
             }
+        }
+
+        // ===== MANEJO DE SWIPERS/SLIDERS =====
+        // Entrar en modo de navegación de slider
+        enterSliderMode(sliderEl) {
+            this.sliderOpenMode = true;
+            this.currentSliderElement = sliderEl;
+            
+            // Reproducir sonido/feedback que se entró en modo slider
+            const lang = this.findClosestLang(sliderEl) || this.defaultLang;
+            this.speak('Modo de navegación de diapositivas activado. Use flechas para navegar, Enter para interactuar, Escape para salir.', lang);
+            
+            // Leer el contenido del slide actual
+            setTimeout(() => {
+                this.readSliderContent(sliderEl, lang);
+            }, 500);
+        }
+
+        // Salir del modo de navegación de slider
+        exitSliderMode() {
+            if (this.sliderOpenMode) {
+                this.sliderOpenMode = false;
+                this.currentSliderElement = null;
+                const lang = this.defaultLang;
+                this.speak('Saliste del modo de navegación de diapositivas.', lang);
+            }
+        }
+
+        // Interactuar con el contenido del slide actual
+        interactWithSlideContent() {
+            if (!this.currentSliderElement) return;
+
+            const wrapper = this.currentSliderElement.querySelector('.swiper-wrapper');
+            if (!wrapper) return;
+
+            const activeSlide = wrapper.querySelector('.swiper-slide-active');
+            if (!activeSlide) return;
+
+            // Buscar elementos interactivos en el slide: botones, enlaces, inputs
+            const interactiveElements = activeSlide.querySelectorAll(
+                'button, a, input[type="text"], input[type="radio"], input[type="checkbox"], textarea, select'
+            );
+
+            if (interactiveElements.length === 0) {
+                this.speak('No hay elementos interactivos en esta diapositiva.', this.defaultLang);
+                return;
+            }
+
+            // Si hay un solo elemento, activarlo
+            if (interactiveElements.length === 1) {
+                const el = interactiveElements[0];
+                const tag = el.tagName.toLowerCase();
+                const type = el.type || '';
+
+                if (tag === 'button' || tag === 'a') {
+                    el.click();
+                } else if (tag === 'input' && ['radio', 'checkbox'].includes(type)) {
+                    el.click();
+                } else if ((tag === 'input' && ['text', 'email', 'password', 'search', 'number', 'tel'].includes(type)) || tag === 'textarea') {
+                    // Salir del modo slider para entrar en modo edición
+                    this.exitSliderMode();
+                    this.enterInputEditMode(el);
+                } else if (tag === 'select') {
+                    this.exitSliderMode();
+                    this.openSelectMode(el);
+                }
+            } else {
+                // Si hay múltiples elementos, avisar al usuario
+                this.speak(`Hay ${interactiveElements.length} elementos interactivos en esta diapositiva. Use Tab para navegar entre ellos.`, this.defaultLang);
+            }
+        }
+
+        // Navegar slides en un swiper/carousel
+        navigateSlider(sliderEl, direction) {
+            if (!sliderEl) return;
+            
+            const lang = this.findClosestLang(sliderEl) || this.defaultLang;
+            
+            // Detectar si es un Swiper
+            if (sliderEl.classList.contains('swiper')) {
+                // Buscar los botones de navegación - pueden estar dentro del swiper o cerca de él
+                let nextBtn = sliderEl.querySelector('.swiper-button-next');
+                let prevBtn = sliderEl.querySelector('.swiper-button-prev');
+                
+                // Si no encuentra los botones adentro, buscarlos en el contenedor padre
+                if (!nextBtn || !prevBtn) {
+                    const parent = sliderEl.parentElement;
+                    if (parent) {
+                        if (!nextBtn) nextBtn = parent.querySelector('.swiper-button-next');
+                        if (!prevBtn) prevBtn = parent.querySelector('.swiper-button-prev');
+                    }
+                }
+                
+                if (direction === 'next' && nextBtn && !nextBtn.classList.contains('swiper-button-disabled')) {
+                    nextBtn.click();
+                    setTimeout(() => {
+                        this.readSliderContent(sliderEl, lang);
+                    }, 300);
+                } else if (direction === 'prev' && prevBtn && !prevBtn.classList.contains('swiper-button-disabled')) {
+                    prevBtn.click();
+                    setTimeout(() => {
+                        this.readSliderContent(sliderEl, lang);
+                    }, 300);
+                }
+            }
+        }
+
+        // Leer el contenido del slide actual - MEJORADO
+        readSliderContent(sliderEl, lang) {
+            const wrapper = sliderEl.querySelector('.swiper-wrapper');
+            if (!wrapper) return;
+            
+            // Encontrar el slide activo
+            const activeSlide = wrapper.querySelector('.swiper-slide-active');
+            if (!activeSlide) return;
+            
+            // Obtener índice del slide
+            const allSlides = wrapper.querySelectorAll('.swiper-slide');
+            let currentIndex = 0;
+            allSlides.forEach((slide, index) => {
+                if (slide === activeSlide) currentIndex = index + 1;
+            });
+            
+            const totalSlides = allSlides.length;
+            const positionText = `Diapositiva ${currentIndex} de ${totalSlides}`;
+            
+            // Estrategia mejorada para extraer contenido:
+            // 1. Buscar contenido etiquetado con clases específicas
+            let content = activeSlide.querySelector('.swiper-content, .content_swip2, .content_slide');
+            
+            // 2. Si no hay contenedor específico, buscar el contenedor principal
+            if (!content) {
+                content = activeSlide.querySelector('.container-section-content') || activeSlide;
+            }
+            
+            // 3. Extraer texto de manera inteligente
+            let textContent = '';
+            if (content) {
+                // Obtener texto de elementos de texto visible (no audios, no scripts)
+                const exclude = ['script', 'style', 'audio', 'video', '.sr-only', '[aria-hidden="true"]'];
+                
+                const textElements = content.querySelectorAll(
+                    'p, h1, h2, h3, h4, h5, h6, li, td, span, .titulo, .titulo-modulo, label, div[role="heading"]'
+                );
+                
+                const textParts = [];
+                textElements.forEach(el => {
+                    // Saltar elementos ocultos
+                    if (el.classList.contains('sr-only') || el.getAttribute('aria-hidden') === 'true') {
+                        return;
+                    }
+                    
+                    let text = '';
+                    // Para párrafos e encabezados, obtener solo el texto directo
+                    if (el.children.length === 0) {
+                        text = el.textContent.trim();
+                    } else {
+                        // Para elementos con hijos, obtener texto de nodos de texto directos
+                        text = Array.from(el.childNodes)
+                            .filter(node => node.nodeType === Node.TEXT_NODE)
+                            .map(node => node.textContent.trim())
+                            .join(' ');
+                    }
+                    
+                    if (text && text.length > 0) {
+                        textParts.push(text);
+                    }
+                });
+                
+                textContent = textParts.join('. ');
+            }
+            
+            // 4. Construir mensaje final
+            let feedbackText = positionText;
+            if (textContent) {
+                // Limitar a 300 caracteres para no hablar demasiado
+                const shortText = textContent.substring(0, 300);
+                feedbackText += `. ${shortText}${textContent.length > 300 ? '...' : ''}`;
+            }
+            
+            this.speak(feedbackText, lang);
         }
 
         moveVirtualFocus(step) {
