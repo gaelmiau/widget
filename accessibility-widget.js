@@ -1074,11 +1074,12 @@
             const baseSelector = 'p, li, h1, h2, h3, h4, h5, h6, button, a, img[alt], [data-a11y-readable]';
             const formSelector = 'input[type="text"], input[type="email"], input[type="password"], input[type="search"], input[type="number"], textarea, select, [role="button"]';
             const educationSelector = 'table, fieldset, legend, .question, .quiz, .form-group, [data-a11y-form], .modal-content, [role="dialog"]';
+            const mediaSelector = 'audio, video';
             const containerSelector = '.card, .alert, .well, [role="region"]';
             
             // Nota: Removimos "label" del educationSelector para evitar duplicados
             // Los labels se leerán como parte de sus inputs/selects asociados
-            const fullSelector = `${baseSelector}, ${formSelector}, ${educationSelector}, ${containerSelector}`;
+            const fullSelector = `${baseSelector}, ${formSelector}, ${educationSelector}, ${mediaSelector}, ${containerSelector}`;
             
             this.readableElements = Array.from(document.querySelectorAll(fullSelector))
                 .filter(el => {
@@ -1235,6 +1236,10 @@
                     // Selects - MEJORADO: Abrir en modo select en lugar de solo click
                     else if (tag === 'select') {
                         this.openSelectMode(currentEl);
+                    }
+                    // Audios y videos - Reproducir/Pausar
+                    else if (tag === 'audio' || tag === 'video') {
+                        this.toggleMediaPlayback(currentEl);
                     }
                     return;
                 }
@@ -1401,6 +1406,34 @@
             }
             
             this.closeSelectMode();
+        }
+
+        // ===== MANEJO DE AUDIOS Y VIDEOS =====
+        // Reproducir/Pausar un audio o video
+        toggleMediaPlayback(mediaEl) {
+            if (!mediaEl || !['audio', 'video'].includes(mediaEl.tagName.toLowerCase())) return;
+            
+            const lang = this.findClosestLang(mediaEl) || this.defaultLang;
+            const type = mediaEl.tagName.toLowerCase();
+            const typeLabel = type === 'audio' ? 'Audio' : 'Video';
+            const title = mediaEl.title || mediaEl.getAttribute('aria-label') || 'Archivo multimedia';
+            
+            try {
+                if (mediaEl.paused) {
+                    // Reproducir
+                    mediaEl.play();
+                    const feedbackText = `${typeLabel} reproduciendo: ${title}`;
+                    this.speak(feedbackText, lang);
+                } else {
+                    // Pausar
+                    mediaEl.pause();
+                    const feedbackText = `${typeLabel} pausado: ${title}`;
+                    this.speak(feedbackText, lang);
+                }
+            } catch (error) {
+                const errorText = `No se pudo reproducir ${typeLabel.toLowerCase()}: ${title}`;
+                this.speak(errorText, lang);
+            }
         }
 
         moveVirtualFocus(step) {
@@ -1605,7 +1638,28 @@
             const src = media.src || media.querySelector('source')?.src || '';
             const title = media.title || media.getAttribute('aria-label') || 'Archivo multimedia';
             const type = media.tagName.toLowerCase();
-            return `${type === 'audio' ? 'Audio' : 'Video'}: ${title}. ${src ? `URL: ${src}` : 'Sin fuente especificada'}`;
+            const isAudio = type === 'audio';
+            
+            // Obtener duración si está disponible
+            let durationText = '';
+            if (media.duration && media.duration !== Infinity) {
+                const minutes = Math.floor(media.duration / 60);
+                const seconds = Math.floor(media.duration % 60);
+                durationText = ` Duración: ${minutes}:${seconds.toString().padStart(2, '0')}.`;
+            }
+            
+            // Obtener estado de reproducción
+            let statusText = '';
+            if (media.paused) {
+                statusText = ' Pausado.';
+            } else {
+                statusText = ' Reproduciéndose.';
+            }
+            
+            const typeLabel = isAudio ? 'Audio' : 'Video';
+            const instruction = ` Presiona Enter para ${media.paused ? 'reproducir' : 'pausar'}.`;
+            
+            return `${typeLabel}: ${title}.${durationText}${statusText}${instruction}`;
         }
         // ==================== HELPERS PARA DETECTAR CONTENIDO ABIERTO ====================
         findOpenedModal() {
