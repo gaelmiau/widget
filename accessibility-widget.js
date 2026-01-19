@@ -1054,7 +1054,7 @@
         }
 
         // ==================== NAVEGACIÓN ====================
-        // NUEVO: Construir lista de elementos SOLO dentro de un modal
+        // Construir lista de elementos SOLO dentro de un modal
         buildReadableElementsInModal(modal) {
             if (!modal) return;
             
@@ -1122,7 +1122,7 @@
                 });
         }
         
-        // NUEVO: Encontrar label asociado a un input
+        // Encontrar label asociado a un input
         findAssociatedLabel(input) {
             if (!input) return null;
             const inputId = input.id;
@@ -1257,7 +1257,7 @@
                             const openedModal = this.findOpenedModal();
 
                             if (openedModal) {
-                                // ✨ NUEVO: Guardar posición actual antes de entrar en modal
+                                // Guardar posición actual antes de entrar en modal
                                 this.savedVirtualFocusIndex = this.virtualFocusIndex;
                                 this.isModalOpen = true;
                                 
@@ -1281,7 +1281,7 @@
                                     this.speak(fullText, this.defaultLang);
                                 }
                                 
-                                // ✨ NUEVO: Empezar a monitorear el cierre del modal
+                                // Empezar a monitorear el cierre del modal
                                 this.startMonitoringModalClosure();
                             } else {
                                 // Reconstruir lista general si no hay modal
@@ -1323,7 +1323,7 @@
                         const closeBtn = openedModal.querySelector('[data-dismiss="modal"], .close, .btn-close, [aria-label*="Cerrar"], [aria-label*="Close"]');
                         if (closeBtn) {
                             closeBtn.click();
-                            // ✨ NUEVO: Esperar a que se cierre y restaurar posición
+                            // Esperar a que se cierre y restaurar posición
                             setTimeout(() => {
                                 this.handleModalClosure();
                             }, 300);
@@ -1706,17 +1706,17 @@
             this.moveHighlightToElement(el);
             this.moveReadingLineToElement(el);
             
-            // NUEVO: Leer con contexto (si es input, incluir label)
+            // Leer con contexto (si es input, incluir label)
             this.readElementContentWithContext(el);
         }
         
-        // NUEVO: Leer elemento con su contexto (ej: label + input)
+        // Leer elemento con su contexto (ej: label + input)
         readElementContentWithContext(el) {
             // Usar la lógica mejorada de readElementContent que ya incluye contexto
             this.readElementContent(el);
         }
 
-        // NUEVO: Obtener texto del elemento sin incluir badge de voz
+        // Obtener texto del elemento sin incluir badge de voz
         getElementTextWithoutBadge(el) {
             // Clonar el elemento para no modificar el original
             const cloned = el.cloneNode(true);
@@ -1726,7 +1726,7 @@
             return cloned.textContent.trim();
         }
 
-        // ✨ NUEVO: Extraer texto legible de un elemento (sin hablar)
+        // Extraer texto legible de un elemento (sin hablar)
         // Usado por tanto "Lectura por Secciones" como "Leer Página"
         getElementReadableText(el) {
             let text = '';
@@ -1829,7 +1829,7 @@
             this.speechSynthesis.speak(utter);
         }
         
-        // NUEVO: Leer tabla
+        // Leer tabla
         readTable(table) {
             let result = 'Tabla. ';
             const rows = table.querySelectorAll('tr');
@@ -1850,14 +1850,14 @@
             return result || 'Tabla vacía';
         }
         
-        // NUEVO: Leer fieldset (grupo de formulario)
+        // Leer fieldset (grupo de formulario)
         readFieldset(fieldset) {
             const legend = fieldset.querySelector('legend');
             let result = legend ? `Grupo de formulario: ${legend.textContent.trim()}. ` : 'Grupo de formulario. ';
             return result;
         }
         
-        // NUEVO: Leer label
+        // Leer label
         readLabel(label) {
             const forId = label.getAttribute('for');
             let result = label.textContent.trim();
@@ -1870,7 +1870,7 @@
             return result;
         }
         
-        // NUEVO: Leer elemento de formulario
+        // Leer elemento de formulario
         readFormElement(input, skipText = false) {
             let result = '';
             const label = this.findAssociatedLabel(input);
@@ -1898,7 +1898,7 @@
             return result.trim();
         }
         
-        // NUEVO: Leer pregunta (para cuestionarios)
+        // Leer pregunta (para cuestionarios)
         readQuestion(question) {
             const questionText = question.textContent.trim();
             const options = question.querySelectorAll('input[type="radio"], input[type="checkbox"], .option, [data-option]');
@@ -1913,7 +1913,7 @@
             return result;
         }
         
-        // NUEVO: Leer media (audio/video)
+        // Leer media (audio/video)
         readMedia(media) {
             const src = media.src || media.querySelector('source')?.src || '';
             const title = media.title || media.getAttribute('aria-label') || 'Archivo multimedia';
@@ -1984,7 +1984,7 @@
             return null;
         }
 
-        // ✨ NUEVO: Empezar a monitorear el cierre del modal
+        // Empezar a monitorear el cierre del modal
         startMonitoringModalClosure() {
             if (this.modalCheckInterval) clearInterval(this.modalCheckInterval);
             
@@ -2001,7 +2001,7 @@
             }, 500);
         }
 
-        // ✨ NUEVO: Manejar el cierre del modal y restaurar posición
+        // Manejar el cierre del modal y restaurar posición
         handleModalClosure() {
             if (!this.isModalOpen) return;
             
