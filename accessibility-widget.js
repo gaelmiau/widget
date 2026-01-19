@@ -20,6 +20,9 @@
             this.readingRulerActive = false; // Regleta de lectura
             this.highlightLinksActive = false; // Resalto de hipervínculos
             this.inputEditMode = false; // Modo de edición en inputs
+            this.selectOpenMode = false; // Modo de navegación en select abierto
+            this.currentSelectElement = null; // Elemento select actualmente abierto
+            this.currentOptionIndex = -1; // Índice de la opción actualmente resaltada
 
             // ========== Preferencias ==========
             this.currentTheme = 'default';
@@ -730,6 +733,9 @@
             this.readingRulerActive = false;
             this.highlightLinksActive = false;
             this.inputEditMode = false;
+            this.selectOpenMode = false;
+            this.currentSelectElement = null;
+            this.currentOptionIndex = -1;
             this.stopReading();
 
             // Remover clase de modo edición si existe
@@ -1067,9 +1073,11 @@
             // Selector EXPANDIDO para captar más contenido educativo
             const baseSelector = 'p, li, h1, h2, h3, h4, h5, h6, button, a, img[alt], [data-a11y-readable]';
             const formSelector = 'input[type="text"], input[type="email"], input[type="password"], input[type="search"], input[type="number"], textarea, select, [role="button"]';
-            const educationSelector = 'table, fieldset, legend, label, .question, .quiz, .form-group, [data-a11y-form], .modal-content, [role="dialog"]';
+            const educationSelector = 'table, fieldset, legend, .question, .quiz, .form-group, [data-a11y-form], .modal-content, [role="dialog"]';
             const containerSelector = '.card, .alert, .well, [role="region"]';
             
+            // Nota: Removimos "label" del educationSelector para evitar duplicados
+            // Los labels se leerán como parte de sus inputs/selects asociados
             const fullSelector = `${baseSelector}, ${formSelector}, ${educationSelector}, ${containerSelector}`;
             
             this.readableElements = Array.from(document.querySelectorAll(fullSelector))
@@ -1092,14 +1100,6 @@
                         const st = window.getComputedStyle(el);
                         if (st && (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0)) return false;
                     } catch (e) { /* ignore */ }
-                    
-                    // NUEVA LÓGICA: Evitar duplicados (ej: no leer input si su label ya se leyó)
-                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
-                        const label = this.findAssociatedLabel(el);
-                        if (label && this.readableElements.includes(label)) {
-                            return false; // El label ya está en la lista
-                        }
-                    }
                     
                     return true;
                 });
@@ -1126,7 +1126,33 @@
             document.addEventListener('keydown', (e) => {
                 const el = document.activeElement;
 
-                // 0. Manejo de modo edición en inputs
+                // 0. PRIORITARIO: Manejo de selectOpenMode (dropdown abierto)
+                if (this.selectOpenMode) {
+                    if (['ArrowUp', 'ArrowLeft'].includes(e.key)) {
+                        e.preventDefault();
+                        this.navigateSelectOption('up');
+                        return;
+                    }
+                    if (['ArrowDown', 'ArrowRight'].includes(e.key)) {
+                        e.preventDefault();
+                        this.navigateSelectOption('down');
+                        return;
+                    }
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        this.confirmSelectOption();
+                        return;
+                    }
+                    if (e.key === 'Escape') {
+                        e.preventDefault();
+                        this.closeSelectMode();
+                        return;
+                    }
+                    // No permitir otras keys en selectOpenMode
+                    return;
+                }
+
+                // 1. Manejo de modo edición en inputs
                 if (this.inputEditMode) {
                     // En modo edición, Escape sale
                     if (e.key === 'Escape') {
@@ -1138,7 +1164,7 @@
                     return;
                 }
 
-                // 1. FLECHAS: Solo funcionan si sectionReadingMode está ACTIVO
+                // 2. FLECHAS: Solo funcionan si sectionReadingMode está ACTIVO
                 if (!this.sectionReadingMode) {
                     // Si no estamos en modo lectura por secciones, no procesar flechas
                     if (['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft'].includes(e.key)) {
@@ -1159,7 +1185,7 @@
                     return;
                 }
 
-                // 2. Enter en modo lectura por secciones: Activar elementos
+                // 3. Enter en modo lectura por secciones: Activar elementos
                 if (e.key === 'Enter' && this.sectionReadingMode && this.virtualFocusIndex >= 0) {
                     e.preventDefault();
                     const currentEl = this.readableElements[this.virtualFocusIndex];
@@ -1206,15 +1232,14 @@
                     else if ((tag === 'input' && ['text', 'email', 'password', 'search', 'number', 'tel'].includes(type)) || tag === 'textarea') {
                         this.enterInputEditMode(currentEl);
                     }
-                    // Selects
+                    // Selects - MEJORADO: Abrir en modo select en lugar de solo click
                     else if (tag === 'select') {
-                        currentEl.click();
-                        currentEl.focus();
+                        this.openSelectMode(currentEl);
                     }
                     return;
                 }
 
-                // 3. Escape para cerrar panel O cerrar modal si hay uno abierto
+                // 4. Escape para cerrar panel O cerrar modal si hay uno abierto
                 if (e.key === 'Escape') {
                     const openedModal = this.findOpenedModal();
                     if (openedModal && this.sectionReadingMode) {
@@ -1232,7 +1257,7 @@
                     }
                 }
 
-                // 4. Enter/Space en botones (solo fuera de modo lectura por secciones)
+                // 5. Enter/Space en botones (solo fuera de modo lectura por secciones)
                 if (!this.sectionReadingMode && (e.key === 'Enter' || e.key === ' ') && el &&
                     (el.tagName === 'BUTTON' || el.tagName === 'A' || el.getAttribute('role') === 'button')) {
                     // Solo permitir si es el botón toggle del widget
@@ -1281,6 +1306,101 @@
             const finalValue = inputEl.value || '';
             const feedbackText = `Modo edición cerrado. ${finalValue ? 'Valor guardado: ' + finalValue : 'Sin cambios'}. Regresando a navegación.`;
             this.speak(feedbackText, this.findClosestLang(inputEl) || this.defaultLang);
+        }
+
+        // ===== MANEJO DE SELECT (LISTAS DESPLEGABLES) =====
+        // Abrir un select en modo navegación
+        openSelectMode(selectEl) {
+            if (!selectEl || selectEl.tagName !== 'SELECT') return;
+            
+            this.selectOpenMode = true;
+            this.currentSelectElement = selectEl;
+            selectEl.classList.add('a11y-input-edit-mode');
+            
+            // Usar selectEl.options en lugar de querySelectorAll para acceso correcto
+            const options = selectEl.options;
+            if (options.length === 0) {
+                const lang = this.findClosestLang(selectEl) || this.defaultLang;
+                this.speak('Lista desplegable vacía.', lang);
+                return;
+            }
+            
+            // Encontrar la opción seleccionada actualmente
+            // selectedIndex es la propiedad correcta para select
+            let currentIndex = selectEl.selectedIndex;
+            if (currentIndex === -1) currentIndex = 0;
+            
+            this.currentOptionIndex = currentIndex;
+            
+            // Dar retroalimentación al usuario
+            const totalOptions = options.length;
+            const currentOption = options[currentIndex];
+            const label = this.findAssociatedLabel(selectEl);
+            const labelText = label ? label.textContent.trim() + '. ' : '';
+            const lang = this.findClosestLang(selectEl) || this.defaultLang;
+            
+            const feedbackText = `${labelText}Lista desplegable abierta. Opción ${currentIndex + 1} de ${totalOptions}. ${currentOption.textContent.trim()}. Usa las flechas arriba y abajo para navegar, Enter para seleccionar, Escape para cancelar.`;
+            this.speak(feedbackText, lang);
+        }
+
+        // Cerrar select sin cambiar la selección
+        closeSelectMode() {
+            if (!this.selectOpenMode || !this.currentSelectElement) return;
+            
+            const selectEl = this.currentSelectElement;
+            const lang = this.findClosestLang(selectEl) || this.defaultLang;
+            
+            this.selectOpenMode = false;
+            selectEl.classList.remove('a11y-input-edit-mode');
+            selectEl.blur(); // Remover focus completamente
+            this.currentSelectElement = null;
+            this.currentOptionIndex = -1;
+            
+            const selectedOption = selectEl.options[selectEl.selectedIndex];
+            const feedbackText = `Lista desplegable cerrada. ${selectedOption ? 'Seleccionada: ' + selectedOption.textContent.trim() : 'Sin selección'}`;
+            this.speak(feedbackText, lang);
+        }
+
+        // Navegar opciones con flechas
+        navigateSelectOption(direction) {
+            if (!this.selectOpenMode || !this.currentSelectElement) return;
+            
+            const selectEl = this.currentSelectElement;
+            const options = selectEl.options;
+            
+            if (options.length === 0) return;
+            
+            // Mover el índice
+            if (direction === 'down' || direction === 'right') {
+                this.currentOptionIndex = (this.currentOptionIndex + 1) % options.length;
+            } else if (direction === 'up' || direction === 'left') {
+                this.currentOptionIndex = (this.currentOptionIndex - 1 + options.length) % options.length;
+            }
+            
+            // Leer la opción actual
+            const currentOption = options[this.currentOptionIndex];
+            const lang = this.findClosestLang(selectEl) || this.defaultLang;
+            const feedbackText = `Opción ${this.currentOptionIndex + 1} de ${options.length}. ${currentOption.textContent.trim()}`;
+            this.speak(feedbackText, lang);
+        }
+
+        // Confirmar selección en select
+        confirmSelectOption() {
+            if (!this.selectOpenMode || !this.currentSelectElement) return;
+            
+            const selectEl = this.currentSelectElement;
+            const options = selectEl.options;
+            
+            if (this.currentOptionIndex >= 0 && this.currentOptionIndex < options.length) {
+                const selectedOption = options[this.currentOptionIndex];
+                selectEl.value = selectedOption.value;
+                
+                const lang = this.findClosestLang(selectEl) || this.defaultLang;
+                const feedbackText = `Opción seleccionada: ${selectedOption.textContent.trim()}`;
+                this.speak(feedbackText, lang);
+            }
+            
+            this.closeSelectMode();
         }
 
         moveVirtualFocus(step) {
