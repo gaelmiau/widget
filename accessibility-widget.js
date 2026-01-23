@@ -961,13 +961,14 @@
                 const el = entry.el;
                 const tag = el.tagName.toLowerCase();
 
-                // Filtrar: no mostrar badges para elementos sin contenido legible real
-                // - Audio/video sin label/title
-                // - Input/textarea vacío sin placeholder útil (ej: solo "Write here")
+                // FILTRO ESTRICTO: no mostrar badges para elementos sin contenido legible real
+                // - Si no tiene texto (entry.text está vacío), no mostrar
+                // - Audio/video sin etiqueta descriptiva
+                // - Input/textarea sin contexto real
+                if (!entry.text || entry.text.trim() === '') return; // skip badge if no readable text
+                
                 const isMediaWithoutLabel = (tag === 'audio' || tag === 'video') && !entry.text;
-                const isInputWithoutContext = (tag === 'input' || tag === 'textarea') && !entry.text && (!el.placeholder || el.placeholder.toLowerCase().includes('write'));
-
-                if (isMediaWithoutLabel || isInputWithoutContext) return; // skip badge for these
+                if (isMediaWithoutLabel) return; // skip badge for these
 
                 try {
                     const r = el.getBoundingClientRect();
@@ -1296,15 +1297,12 @@
                 }
                 if (skip) return;
 
-                // Marcar como visto y agregar entry para el elemento
-                seen.add(el);
                 const tag = el.tagName.toLowerCase();
-                // Si es un input/textarea con placeholder y sin texto, usar el placeholder como etiqueta
+                
+                // Obtener texto del elemento
                 let elementText = this.getElementTextWithoutBadge(el) || el.innerText || el.alt || '';
-                if ((tag === 'input' || tag === 'textarea') && !elementText && el.placeholder) {
-                    elementText = el.placeholder;
-                }
-                // Si es un input/textarea sin etiqueta, buscar un label asociado o párrafo cercano
+                
+                // FILTRO CRUCIAL: Para inputs/textareas, buscar contenido real (no solo placeholder)
                 if ((tag === 'input' || tag === 'textarea') && !elementText) {
                     // Intentar encontrar label por id
                     if (el.id) {
@@ -1327,7 +1325,16 @@
                             depth++;
                         }
                     }
+                    
+                    // Si NO tiene contenido legible, IGNORAR COMPLETAMENTE
+                    if (!elementText) {
+                        return; // Saltar, no numerar ni leer
+                    }
                 }
+
+                // Marcar como visto y agregar entry para el elemento
+                seen.add(el);
+                
                 this.numberedIndexMap.push({ number: counter++, type: 'element', el: el, text: elementText });
                 // Nota: ya no añadimos select-option entries porque usamos navegación con flechas en su lugar
             });
