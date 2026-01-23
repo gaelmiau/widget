@@ -40,14 +40,89 @@ También puedes decir números en palabras:
 
 El widget automáticamente detecta qué tipo de elemento es y realiza la acción apropiada:
 
-- **Párrafos, Títulos, Imágenes**: Se **leen en voz alta** (TTS).
-- **Botones, Enlaces**: Se **hacen clic/activan**.
-- **Inputs, Selects, Textareas**: Se **enfocan** para que puedas interactuar.
+**Elementos de Lectura:**
+- **Párrafos, Títulos, Encabezados (h1-h6)**: Se **leen en voz alta** (TTS) sin incluir el número del badge.
+- **Imágenes**: Se **leen sus atributos alt**.
+- **Tablas**: Se **leen estructuradamente** (filas y celdas).
+- **Preguntas/Cuestionarios**: Se **leen con opciones** (si aplica).
+
+**Elementos Interactivos Simples:**
+- **Botones**: Se **hacen clic/activan** automáticamente con feedback de voz.
+- **Enlaces**: Se **abren** automáticamente con feedback de voz.
+
+**Elementos con Entrada de Datos:**
+- **Inputs de Texto**: Se **enfocan** y entran en **modo edición** (puedes escribir directamente).
+  - Presiona **Escape** para salir del modo edición.
+  - Se lee el label, placeholder y valor actual.
+  
+- **Textareas**: Se **enfocan** y entran en **modo edición** (puedes escribir directamente).
+  - Presiona **Escape** para salir del modo edición.
+
+**Listas Desplegables (Selects):**
+- **Abre la lista** en modo de navegación especial.
+- Usa **Flecha Arriba/Abajo** para navegar opciones.
+- Presiona **Enter** para seleccionar la opción actual.
+- Presiona **Escape** para cancelar sin cambiar.
+- Se lee automáticamente cada opción mientras navegas.
+
+**Elementos Multimedia:**
+- **Audio**: Se **reproduce/pausa** con feedback ("Reproduciendo" o "Pausado").
+- **Video**: Se **reproduce/pausa** con feedback ("Reproduciendo" o "Pausado").
+- Se leen atributos como duración y estado actual.
+
+**Carruseles/Swipers:**
+- Se **entra en modo de navegación** especial.
+- Usa **Flecha Izquierda/Derecha** para navegar slides.
+- Presiona **Enter** para interactuar con elementos dentro del slide actual.
+- Presiona **Escape** para salir del modo slider.
+
+**Fieldsets (Grupos de Formulario):**
+- Se **leen completamente** con su leyenda.
 
 #### Comandos Especiales
 
 - **"Desactivar"**: Desactiva el modo de comandos por voz.
 - **"Salir"**: Lo mismo que "desactivar".
+
+## Flujo Completo de Ejemplo
+
+### Caso 1: Llenar un Formulario
+
+1. Di **"3"** → El widget detecta que es un `<input type="text">` con label "Nombre".
+2. Entras en **modo edición** automáticamente (el input se resalta en rojo).
+3. **Escribe tu nombre** usando el teclado.
+4. Presiona **Escape** para salir del modo edición.
+5. Se lee un resumen de lo que escribiste.
+6. Di **"4"** → Si es un `<select>`, se abre el dropdown en modo navegación.
+7. Usa **Flecha Arriba/Abajo** para navegar opciones (se leen automáticamente).
+8. Presiona **Enter** para seleccionar.
+9. Presiona **Escape** si quieres cancelar.
+
+### Caso 2: Reproducir un Video
+
+1. Di **"7"** → El widget detecta que es un `<video>`.
+2. El video **comienza a reproducirse** automáticamente.
+3. Se te informa: "Video: [Título]. Reproduciendo."
+4. Para pausar, simplemente di **"7"** nuevamente.
+
+### Caso 3: Navegar un Carrusel
+
+1. Di **"12"** → El widget detecta que es un `.swiper` (carrusel).
+2. Entras en **modo slider**.
+3. Usa **Flecha Izquierda** o **Flecha Derecha** para navegar diapositivas.
+4. Se **lee automáticamente** el contenido de cada slide (título, descripción, etc.).
+5. Si hay un botón en el slide, presiona **Enter** para interactuar.
+6. Presiona **Escape** para salir del modo slider.
+
+## Coherencia con Otras Funciones
+
+Los **Comandos de Voz por Números** ahora detectan y numeran **exactamente los mismos elementos** que:
+- ✅ **"Lectura por Secciones"** (navegación con flechas)
+- ✅ **"Leer Página"** (lectura automática)
+
+Esto significa:
+- Consistencia total: todos los modos leen/interactúan de la misma forma inteligente.
+- Diferencia solamente en **cómo navegas**: números de voz vs. flechas vs. automático.
 
 ### 4. Desactivación del Modo
 

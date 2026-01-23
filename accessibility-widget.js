@@ -67,6 +67,52 @@
             this.init();
         }
 
+        // Mostrar badges temporales para las opciones de un select (cuando se activa por voz)
+        showSelectOptionBadges(selectEl) {
+            if (!selectEl) return;
+            // limpiar previas
+            this.removeTempSelectBadges();
+            this.tempSelectBadges = [];
+            // encontrar las entradas correspondientes
+            const options = (this.numberedIndexMap || []).filter(e => e.type === 'select-option' && e.parentSelect === selectEl);
+            if (!options || !options.length) return;
+            const pr = selectEl.getBoundingClientRect();
+            options.forEach((optEntry, i) => {
+                try {
+                    const badge = document.createElement('div');
+                    badge.className = 'a11y-number-badge a11y-temp-option-badge';
+                    badge.textContent = optEntry.number;
+                    badge.setAttribute('data-a11y-number', optEntry.number);
+                    badge.setAttribute('aria-hidden', 'true');
+                    Object.assign(badge.style, {
+                        position: 'absolute',
+                        top: `${pr.bottom + window.scrollY + (i * 22)}px`,
+                        left: `${pr.right + window.scrollX + 6}px`,
+                        zIndex: 99999,
+                        background: 'rgba(0,0,0,0.75)',
+                        color: '#fff',
+                        padding: '2px 6px',
+                        borderRadius: '10px',
+                        fontSize: '11px',
+                        pointerEvents: 'none'
+                    });
+                    document.body.appendChild(badge);
+                    this.tempSelectBadges.push(badge);
+                } catch (e) { /* ignore */ }
+            });
+            // Auto-remover después de 12s si el usuario no selecciona
+            if (this._selectOptionAutoRemoveTimer) clearTimeout(this._selectOptionAutoRemoveTimer);
+            this._selectOptionAutoRemoveTimer = setTimeout(() => { this.removeTempSelectBadges(); }, 12000);
+        }
+
+        removeTempSelectBadges() {
+            if (this._selectOptionAutoRemoveTimer) { clearTimeout(this._selectOptionAutoRemoveTimer); this._selectOptionAutoRemoveTimer = null; }
+            if (this.tempSelectBadges && this.tempSelectBadges.length) {
+                this.tempSelectBadges.forEach(b => { try { b.remove(); } catch (e) {} });
+            }
+            this.tempSelectBadges = [];
+        }
+
         // ==================== INICIALIZACIÓN ====================
         init() {
             this.loadIntegrationConfig();
@@ -863,18 +909,28 @@
 
             if (this.numberedVoiceMode) {
                 // Activar modo
+                // CRÍTICO: Usar la MISMA buildReadableElementsList que "Leer Página" y "Lectura por Secciones"
+                // Así se numeran TODOS los componentes de la misma forma
                 this.buildReadableElementsList();
                 this.createNumberedLabels();
                 btn.textContent = 'Desactivar Comandos por Voz';
                 btn.classList.add('active');
-                this.startNumberedVoiceRecognition();
+                
+                // Feedback al usuario
+                const feedbackText = `Comandos por voz activados. Total de elementos detectados: ${this.totalNumberedElements - 1}. Diga un número para leer o interactuar con ese elemento. Diga cero para abrir el panel.`;
+                this.speak(feedbackText, this.defaultLang);
+                
                 this.autoClosePanel();
+                this.startNumberedVoiceRecognition();
             } else {
                 // Desactivar modo
+                this.stopNumberedVoiceRecognition();
                 this.removeNumberedLabels();
                 btn.textContent = 'Activar Comandos por Voz';
                 btn.classList.remove('active');
-                this.stopNumberedVoiceRecognition();
+                
+                // Feedback
+                this.speak('Comandos por voz desactivados.', this.defaultLang);
             }
         }
 
@@ -889,33 +945,74 @@
                 toggleBtn.appendChild(badge);
             }
 
-            // Enumerar elementos legibles
+            // Guardar badges para limpieza futura
+            this.numberedBadgeEls = [];
+
+            // Enumerar a partir del mapeo global "numberedIndexMap"
             let num = 1;
-            this.readableElements.forEach(el => {
-                if (!el.closest || !el.closest('#accessibility-widget')) {
+            if (!this.numberedIndexMap || !this.numberedIndexMap.length) {
+                // Fallback: si no existe el mapeo, construir a partir de readableElements
+                this.buildReadableElementsList();
+            }
+
+            // Mostrar sólo badges para entradas de tipo 'element' con contenido útil para la voz.
+            (this.numberedIndexMap || []).forEach(entry => {
+                if (entry.type !== 'element') return; // skip select-option (shown on demand)
+                const el = entry.el;
+                const tag = el.tagName.toLowerCase();
+
+                // Filtrar: no mostrar badges para elementos sin contenido legible real
+                // - Audio/video sin label/title
+                // - Input/textarea vacío sin placeholder útil (ej: solo "Write here")
+                const isMediaWithoutLabel = (tag === 'audio' || tag === 'video') && !entry.text;
+                const isInputWithoutContext = (tag === 'input' || tag === 'textarea') && !entry.text && (!el.placeholder || el.placeholder.toLowerCase().includes('write'));
+
+                if (isMediaWithoutLabel || isInputWithoutContext) return; // skip badge for these
+
+                try {
+                    const r = el.getBoundingClientRect();
                     const badge = document.createElement('div');
                     badge.className = 'a11y-number-badge';
-                    badge.textContent = num;
-                    badge.setAttribute('data-a11y-number', num);
-                    el.style.position = 'relative';
-                    el.appendChild(badge);
-                    el.setAttribute('data-a11y-index', num);
-                    num++;
-                }
+                    badge.textContent = entry.number;
+                    badge.setAttribute('data-a11y-number', entry.number);
+                    badge.setAttribute('aria-hidden', 'true');
+                    // Position absolute in body to avoid layout changes
+                    Object.assign(badge.style, {
+                        position: 'absolute',
+                        top: `${Math.max(4, r.top + window.scrollY)}px`,
+                        left: `${r.right + window.scrollX + 6}px`,
+                        zIndex: 99999,
+                        background: 'rgba(255,107,107,0.95)',
+                        color: '#fff',
+                        padding: '2px 6px',
+                        borderRadius: '12px',
+                        fontSize: '11px',
+                        lineHeight: '12px',
+                        pointerEvents: 'none',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                    });
+                    document.body.appendChild(badge);
+                    this.numberedBadgeEls.push(badge);
+
+                    // Marcar el índice en el elemento para referencia rápida
+                    try { el.setAttribute('data-a11y-index', entry.number); } catch (e) { }
+                } catch (e) { /* ignore */ }
             });
 
-            // Guardar el total de elementos
-            this.totalNumberedElements = num;
+            // Guardar el total de elementos (incluye opciones)
+            this.totalNumberedElements = (this.numberedIndexMap || []).length + 1; // +1 para el 0
         }
 
         removeNumberedLabels() {
-            document.querySelectorAll('.a11y-number-badge').forEach(badge => {
-                badge.remove();
-            });
-            document.querySelectorAll('[data-a11y-index]').forEach(el => {
-                el.removeAttribute('data-a11y-index');
-                el.style.position = '';
-            });
+            // Remove badges we added
+            (this.numberedBadgeEls || []).forEach(b => { try { b.remove(); } catch (e) {} });
+            this.numberedBadgeEls = [];
+            // Also remove any temporary select option badges
+            if (this.tempSelectBadges) { this.tempSelectBadges.forEach(b => { try { b.remove(); } catch (e) {} }); this.tempSelectBadges = []; }
+            // Also remove any leftover badges in the DOM (safety)
+            document.querySelectorAll('.a11y-number-badge').forEach(b => { try { b.remove(); } catch (e) {} });
+            // Cleanup data attributes
+            document.querySelectorAll('[data-a11y-index]').forEach(el => { el.removeAttribute('data-a11y-index'); });
         }
 
         startNumberedVoiceRecognition() {
@@ -978,6 +1075,20 @@
 
                 this.numberedVoiceRecog.onerror = (e) => {
                     console.warn('Error STT numerado:', e.error);
+                    // No detener en errores; continuar escuchando incluso después de 'no-speech'
+                };
+
+                this.numberedVoiceRecog.onend = () => {
+                    // Si el modo sigue activo, reiniciar el reconocimiento inmediatamente
+                    if (this.numberedVoiceMode) {
+                        try {
+                            setTimeout(() => {
+                                if (this.numberedVoiceMode && this.numberedVoiceRecog) {
+                                    this.numberedVoiceRecog.start();
+                                }
+                            }, 100);
+                        } catch (e) { /* ignore */ }
+                    }
                 };
 
                 this.numberedVoiceRecog.start();
@@ -1023,34 +1134,87 @@
                 return;
             }
 
-            // Buscar el elemento con ese índice
-            const element = document.querySelector(`[data-a11y-index="${num}"]`);
-            if (!element) return;
-
-            const tag = element.tagName.toLowerCase();
-
-            // Si es interactivo (botón, enlace), hacer click
-            if (['button', 'a'].includes(tag) || element.getAttribute('role') === 'button' || element.onclick) {
-                element.click();
+            // buscar en el mapeo numerado
+            const entry = (this.numberedIndexMap || []).find(e => e.number === num);
+            if (!entry) {
+                const msg = `Elemento número ${num} no encontrado.`;
+                this.speak(msg, this.defaultLang);
                 return;
             }
 
-            // Si es un elemento input, select, etc
-            if (['input', 'select', 'textarea'].includes(tag)) {
-                element.focus();
+            const elemLang = (entry.el && (entry.el.dataset?.a11yLang || entry.el.lang)) || this.defaultLang;
+
+            // Manejo por tipo de entrada en el mapeo
+            if (entry.type === 'element') {
+                const element = entry.el;
+                const tag = element.tagName.toLowerCase();
+                const type = element.type || '';
+                const role = element.getAttribute && element.getAttribute('role');
+
+                // Botones
+                if (tag === 'button' || role === 'button' || element.onclick) {
+                    const btnText = this.getElementTextWithoutBadge(element);
+                    const feedbackText = `Activando: ${btnText}`;
+                    this.speak(feedbackText, elemLang);
+                    try { element.click(); } catch (e) { element.dispatchEvent(new Event('click')); }
+                    return;
+                }
+
+                // Enlaces
+                if ((tag === 'a' && element.href) || role === 'link') {
+                    const linkText = this.getElementTextWithoutBadge(element);
+                    const feedbackText = `Abriendo enlace: ${linkText}`;
+                    this.speak(feedbackText, elemLang);
+                    try { element.click(); } catch (e) { window.location.href = element.href || '#'; }
+                    return;
+                }
+
+                // Inputs y textarea -> entrar en modo edición silenciosamente
+                if ((tag === 'input' && ['text', 'email', 'password', 'search', 'number', 'tel'].includes(type)) || tag === 'textarea') {
+                    // Si el input tiene placeholder útil, mencionarlo; sino, silencio
+                    const placeholder = element.placeholder ? ` ${element.placeholder}` : '';
+                    this.enterInputEditMode(element);
+                    this.speak('Modo edición' + placeholder, elemLang);
+                    return;
+                }
+
+                // Select -> abrir select en modo navegación (similar a Lectura por Secciones)
+                if (tag === 'select') {
+                    try { this.openSelectMode(element); } catch (e) {}
+                    const currentOption = element.options[element.selectedIndex];
+                    const currentText = currentOption ? currentOption.text : 'Sin selección';
+                    this.speak(`Lista: ${entry.text || 'opciones'}. Opción actual: ${currentText}. Usa flechas para navegar y Enter para seleccionar.`, elemLang);
+                    // NO mostrar badges de opciones; el usuario navega con flechas
+                    return;
+                }
+
+                // Media
+                if (tag === 'audio' || tag === 'video') {
+                    this.toggleMediaPlayback(element);
+                    this.speak('Reproduciendo/pausando', elemLang);
+                    return;
+                }
+
+                // Slider
+                if (element.classList && (element.classList.contains('swiper') || element.classList.contains('carousel')) || (element.getAttribute && element.getAttribute('role') === 'region' && element.getAttribute('aria-roledescription') === 'carousel')) {
+                    this.enterSliderMode(element);
+                    this.speak('Entrando en modo slider', elemLang);
+                    return;
+                }
+
+                // Tablas, fieldsets, images y genéricos: leer con extractor
+                if (tag === 'table') { this.speak(this.readTable(element), elemLang); return; }
+                if (tag === 'fieldset') { this.speak(this.readFieldset(element), elemLang); return; }
+                if (tag === 'img' && element.alt) { this.speak(`Imagen: ${element.alt}`, elemLang); return; }
+                const text = this.getElementReadableText(element);
+                if (text) { this.speak(text, elemLang); return; }
+
+                this.speak(`Elemento ${num}: Sin contenido legible.`, elemLang);
                 return;
             }
 
-            // Si no es interactivo, leer su contenido (sin incluir el número del badge)
-            const elemLang = element.dataset?.a11yLang || element.lang || this.findClosestLang(element) || this.defaultLang;
-            // Clonar el elemento y remover el badge para obtener el texto sin el número
-            const clonedEl = element.cloneNode(true);
-            const badge = clonedEl.querySelector('.a11y-number-badge');
-            if (badge) badge.remove();
-            const text = clonedEl.textContent.trim();
-            if (text) {
-                this.speak(text, elemLang);
-            }
+            // fallback
+            this.speak('Acción no soportada para este número', this.defaultLang);
         }
 
         // ==================== NAVEGACIÓN ====================
@@ -1085,25 +1249,21 @@
         
         // MEJORADO: buildReadableElementsList()
         buildReadableElementsList() {
-            // Selector EXPANDIDO para captar más contenido educativo
+            // Reusar selector amplio para la lectura normal
             const baseSelector = 'p, li, h1, h2, h3, h4, h5, h6, button, a, img[alt], [data-a11y-readable]';
             const formSelector = 'input[type="text"], input[type="email"], input[type="password"], input[type="search"], input[type="number"], textarea, select, [role="button"]';
             const educationSelector = 'table, fieldset, legend, .question, .quiz, .form-group, [data-a11y-form], .modal-content, [role="dialog"]';
             const mediaSelector = 'audio, video';
             const sliderSelector = '.swiper, .carousel, [role="region"][aria-roledescription="carousel"]';
             const containerSelector = '.card, .alert, .well, [role="region"]';
-            
-            // Nota: Removimos "label" del educationSelector para evitar duplicados
-            // Los labels se leerán como parte de sus inputs/selects asociados
+
             const fullSelector = `${baseSelector}, ${formSelector}, ${educationSelector}, ${mediaSelector}, ${sliderSelector}, ${containerSelector}`;
-            
+
+            // Mantener readableElements para otras funcionalidades (array de elementos DOM)
             this.readableElements = Array.from(document.querySelectorAll(fullSelector))
                 .filter(el => {
-                    // No leer el propio widget
                     if (el.closest && el.closest('#accessibility-widget')) return false;
-                    // Soporte para opt-out explícito
                     if (el.dataset && el.dataset.a11yRead === 'false') return false;
-                    // aria-hidden o hidden en elemento o ancestros
                     if (el.hasAttribute && el.hasAttribute('aria-hidden') && el.getAttribute('aria-hidden') === 'true') return false;
                     if (el.hidden) return false;
                     let p = el.parentElement;
@@ -1111,15 +1271,66 @@
                         if (p.hasAttribute && p.hasAttribute('aria-hidden') && p.getAttribute('aria-hidden') === 'true') return false;
                         p = p.parentElement;
                     }
-                    // Visibilidad visual
                     if (el.offsetParent === null) return false;
                     try {
                         const st = window.getComputedStyle(el);
                         if (st && (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0)) return false;
                     } catch (e) { /* ignore */ }
-                    
                     return true;
                 });
+
+            // Construir un mapeo numerado global que incluya opciones de select
+            this.numberedIndexMap = [];
+            let counter = 1; // empezamos en 1 (0 reservado para el widget toggle)
+            const seen = new WeakSet();
+            this.readableElements.forEach(el => {
+                // Evitar numerar controles dentro del propio widget
+                if (el.closest && el.closest('#accessibility-widget')) return;
+
+                // Saltar si alguno de sus ancestros ya fue numerado
+                let p = el.parentElement;
+                let skip = false;
+                while (p) {
+                    if (seen.has(p)) { skip = true; break; }
+                    p = p.parentElement;
+                }
+                if (skip) return;
+
+                // Marcar como visto y agregar entry para el elemento
+                seen.add(el);
+                const tag = el.tagName.toLowerCase();
+                // Si es un input/textarea con placeholder y sin texto, usar el placeholder como etiqueta
+                let elementText = this.getElementTextWithoutBadge(el) || el.innerText || el.alt || '';
+                if ((tag === 'input' || tag === 'textarea') && !elementText && el.placeholder) {
+                    elementText = el.placeholder;
+                }
+                // Si es un input/textarea sin etiqueta, buscar un label asociado o párrafo cercano
+                if ((tag === 'input' || tag === 'textarea') && !elementText) {
+                    // Intentar encontrar label por id
+                    if (el.id) {
+                        const label = document.querySelector(`label[for="${el.id}"]`);
+                        if (label) {
+                            elementText = label.textContent.trim();
+                        }
+                    }
+                    // Si aún no hay texto, buscar párrafo o texto en elemento padre cercano
+                    if (!elementText) {
+                        let parent = el.parentElement;
+                        let depth = 0;
+                        while (parent && depth < 3) {
+                            const nearbyText = parent.querySelector('p:not(.sr-only), span:not(.sr-only), label');
+                            if (nearbyText && nearbyText !== el) {
+                                elementText = nearbyText.textContent.trim();
+                                if (elementText) break;
+                            }
+                            parent = parent.parentElement;
+                            depth++;
+                        }
+                    }
+                }
+                this.numberedIndexMap.push({ number: counter++, type: 'element', el: el, text: elementText });
+                // Nota: ya no añadimos select-option entries porque usamos navegación con flechas en su lugar
+            });
         }
         
         // Encontrar label asociado a un input
@@ -2043,7 +2254,9 @@
             interactiveElements.forEach(el => {
                 if (el.closest && el.closest('#accessibility-widget')) return;
                 if (this.shouldIgnoreElement && this.shouldIgnoreElement(el)) return;
+                // Sólo hablar si la lectura está activada explícitamente (Lectura por Secciones o Leer Página)
                 const speakElement = () => {
+                    if (!this.sectionReadingMode && !this.flowReadingActive) return;
                     let label = el.getAttribute('aria-label') || el.innerText || el.value || el.title || el.alt || 'Elemento interactivo';
                     const type = el.tagName.toLowerCase();
                     if (type === 'button') label = `Botón: ${label}`;
@@ -2053,6 +2266,7 @@
                     const elemLang = el.dataset?.a11yLang || el.lang || this.findClosestLang(el) || this.defaultLang;
                     this.speak(label, elemLang);
                 };
+
                 el.addEventListener('focus', () => speakElement());
                 el.addEventListener('mouseenter', () => speakElement());
                 el.addEventListener('click', () => speakElement());
