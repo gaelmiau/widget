@@ -1004,22 +1004,56 @@
                     badge.textContent = displayNumber;
                     badge.setAttribute('data-a11y-number', displayNumber);
                     badge.setAttribute('aria-hidden', 'true');
-                    // Position absolute in body to avoid layout changes
+                    
+                    // Detectar si el elemento está en el menú
+                    const isInMenu = openedModal && openedModal.id === 'menu-item';
+                    
+                    // Los elementos del menú (fixed) usan position: fixed
+                    // Los elementos de la página (normal) usan position: absolute con scroll compensation
+                    // Forzamos dimensiones y evitar transformaciones para que no escalen al hacer scroll
+                    // Calcular posición de forma que el badge quede centrado verticalmente
+                    const badgeSize = 22; // px (coincide con width/height más abajo)
+                    const offset = 6; // separación horizontal respecto al borde del elemento
+                    const centeredTopViewport = Math.max(4, r.top + (r.height / 2) - (badgeSize / 2));
+                    const centeredTopDocument = Math.max(4, r.top + window.scrollY + (r.height / 2) - (badgeSize / 2));
+
                     Object.assign(badge.style, {
-                        position: 'absolute',
-                        top: `${Math.max(4, r.top + window.scrollY)}px`,
-                        left: `${r.right + window.scrollX + 6}px`,
+                        position: isInMenu ? 'fixed' : 'absolute',
+                        top: isInMenu ? `${centeredTopViewport}px` : `${centeredTopDocument}px`,
+                        left: isInMenu ? `${r.right + offset}px` : `${r.right + window.scrollX + offset}px`,
                         zIndex: 99999,
                         background: 'rgba(255,107,107,0.95)',
                         color: '#fff',
-                        padding: '2px 6px',
+                        padding: '0px',
+                        width: '22px',
+                        height: '22px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textAlign: 'center',
+                        direction: 'ltr',
+                        fontWeight: '600',
+                        fontFamily: 'Arial, Helvetica, sans-serif',
                         borderRadius: '12px',
                         fontSize: '11px',
-                        lineHeight: '12px',
                         pointerEvents: 'none',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                        boxSizing: 'border-box',
+                        transform: 'none',
+                        transformOrigin: 'center center',
+                        willChange: 'top, left'
                     });
+                    // Evitar que reglas externas afecten el badge (usar !important)
+                    try {
+                        badge.style.setProperty('transform', 'none', 'important');
+                        badge.style.setProperty('font-size', '11px', 'important');
+                        badge.style.setProperty('width', '22px', 'important');
+                        badge.style.setProperty('height', '22px', 'important');
+                    } catch (e) { /* ignore */ }
                     document.body.appendChild(badge);
+                    // Guardar referencia directa al elemento para updateBadgePositions
+                    badge._targetElement = el;
+                    badge._isInMenu = isInMenu;
                     this.numberedBadgeEls.push(badge);
 
                     // Marcar el índice en el elemento para referencia rápida
@@ -1029,6 +1063,19 @@
 
             // Guardar el total de elementos
             this.totalNumberedElements = elementsToNumber.length + 1; // +1 para el 0
+            
+            // Configurar listener de scroll para actualizar posiciones de badges
+            if (this.numberedBadgeEls && this.numberedBadgeEls.length > 0) {
+                // Remover listener anterior si existe
+                if (this._badgeScrollListener) {
+                    window.removeEventListener('scroll', this._badgeScrollListener);
+                }
+                // Crear listener con requestAnimationFrame para mejor performance
+                this._badgeScrollListener = () => {
+                    requestAnimationFrame(() => this.updateBadgePositions());
+                };
+                window.addEventListener('scroll', this._badgeScrollListener);
+            }
         }
 
         removeNumberedLabels() {
@@ -1041,11 +1088,61 @@
             document.querySelectorAll('.a11y-number-badge').forEach(b => { try { b.remove(); } catch (e) {} });
             // Cleanup data attributes
             document.querySelectorAll('[data-a11y-index]').forEach(el => { el.removeAttribute('data-a11y-index'); });
+            
+            // Limpiar listener de scroll
+            if (this._badgeScrollListener) {
+                window.removeEventListener('scroll', this._badgeScrollListener);
+                this._badgeScrollListener = null;
+            }
+        }
+
+        // Actualizar posiciones de badges cuando hay scroll
+        updateBadgePositions() {
+            if (!this.numberedBadgeEls || !this.numberedBadgeEls.length) return;
+            
+            this.numberedBadgeEls.forEach(badge => {
+                try {
+                    const targetEl = badge._targetElement;
+                    const isInMenu = badge._isInMenu;
+                    
+                    // Si el elemento ya no existe en el DOM o es null, omitir
+                    if (!targetEl || !document.contains(targetEl)) {
+                        badge.style.display = 'none';
+                        return;
+                    }
+                    
+                    const r = targetEl.getBoundingClientRect();
+
+                    // Mantener el badge centrado verticalmente respecto al elemento
+                    const badgeSize = 22;
+                    const offset = 6;
+                    const centeredTopViewport = Math.max(4, r.top + (r.height / 2) - (badgeSize / 2));
+                    const centeredTopDocument = Math.max(4, r.top + window.scrollY + (r.height / 2) - (badgeSize / 2));
+
+                    // Actualizar posición respetando el tipo original del badge
+                    badge.style.display = 'block';
+                    if (isInMenu) {
+                        // Elementos del menú: fixed, sin scroll compensation
+                        badge.style.top = `${Math.round(centeredTopViewport)}px`;
+                        badge.style.left = `${Math.round(r.right + offset)}px`;
+                    } else {
+                        // Elementos de la página: absolute, con scroll compensation
+                        badge.style.top = `${Math.round(centeredTopDocument)}px`;
+                        badge.style.left = `${Math.round(r.right + window.scrollX + offset)}px`;
+                    }
+                } catch (e) { /* ignore */ }
+            });
         }
 
         startNumberedVoiceRecognition() {
             if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
                 alert('Tu navegador no soporta reconocimiento de voz.');
+                return;
+            }
+
+            // GUARD: Si ya tenemos un reconocedor activo, no iniciar otro
+            if (this.numberedVoiceRecog && this.numberedVoiceRecog._isRunning) {
+                console.log('[A11Y-DEBUG] Speech recognition already running, skipping start');
                 return;
             }
 
@@ -1056,6 +1153,11 @@
                 // Solo obtenemos resultados finales para evitar duplicados (interim puede disparar varias veces)
                 this.numberedVoiceRecog.continuous = true;
                 this.numberedVoiceRecog.interimResults = false;
+
+                this.numberedVoiceRecog.onstart = () => {
+                    this.numberedVoiceRecog._isRunning = true;
+                    console.log('[A11Y-DEBUG] Speech recognition started');
+                };
 
                 this.numberedVoiceRecog.onresult = (event) => {
                     for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -1107,15 +1209,16 @@
                 };
 
                 this.numberedVoiceRecog.onend = () => {
-                    // Si el modo sigue activo, reiniciar el reconocimiento inmediatamente
-                    if (this.numberedVoiceMode) {
+                    this.numberedVoiceRecog._isRunning = false;
+                    // Si el modo sigue activo, reiniciar el reconocimiento con guard
+                    if (this.numberedVoiceMode && this.numberedVoiceRecog) {
                         try {
                             setTimeout(() => {
-                                if (this.numberedVoiceMode && this.numberedVoiceRecog) {
+                                if (this.numberedVoiceMode && this.numberedVoiceRecog && !this.numberedVoiceRecog._isRunning) {
                                     this.numberedVoiceRecog.start();
                                 }
                             }, 100);
-                        } catch (e) { /* ignore */ }
+                        } catch (e) { console.log('[A11Y-DEBUG] Error restarting recognition:', e); }
                     }
                 };
 
@@ -1125,6 +1228,9 @@
                 this.startModalMonitoringForVoiceMode();
             } catch (e) {
                 console.warn('No se pudo iniciar reconocimiento numerado:', e);
+                if (this.numberedVoiceRecog) {
+                    this.numberedVoiceRecog._isRunning = false;
+                }
             }
         }
 
@@ -1174,10 +1280,13 @@
                 }
 
                 const currentModal = this.findOpenedModal();
-                const currentModalState = currentModal ? currentModal.className : null;
+                const currentModalState = currentModal ? currentModal.id || currentModal.className : 'CLOSED';
+                
+                console.log('[A11Y-DEBUG] modalCheckInterval: currentModalState =', currentModalState, 'lastModalState =', lastModalState);
 
                 // Si el estado cambió (se abrió o se cerró un modal/menú), recalcular badges
                 if (currentModalState !== lastModalState) {
+                    console.log('[A11Y-DEBUG] modalCheckInterval: State changed! Recalculating badges');
                     this.createNumberedLabels();
                     lastModalState = currentModalState;
                 }
@@ -1345,9 +1454,10 @@
                         if (p.hasAttribute && p.hasAttribute('aria-hidden') && p.getAttribute('aria-hidden') === 'true') return false;
                         p = p.parentElement;
                     }
-                    // Para menú: ser más permisivo con offsetParent (puede ser null para elementos de menú)
-                    // Solo verificar que el modal mismo esté visible
-                    if (modal.offsetParent === null) return false;
+                    // IMPORTANTE: Para el menú, NO verificar offsetParent (está fixed y será null)
+                    // Para otros modales, sí verificar que el modal sea visible
+                    const isMenu = modal.id === 'menu-item';
+                    if (!isMenu && modal.offsetParent === null) return false;
                     
                     try {
                         const st = window.getComputedStyle(el);
@@ -2353,14 +2463,12 @@
                 const sidebar = document.getElementById('menu-item');
                 console.log('[A11Y-DEBUG] findOpenedModal: Checking sidebar element:', sidebar);
                 if (sidebar) {
-                    // Verificar si tiene clase 'active' O si está visible
+                    // Para el menú, SOLO verificar que tenga clase 'active'
+                    // (el menú existe siempre en el DOM pero solo está "abierto" cuando tiene active)
                     const hasActive = sidebar.classList.contains('active');
-                    const style = window.getComputedStyle(sidebar);
-                    const isVisible = style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) !== 0;
-                    console.log('[A11Y-DEBUG] findOpenedModal: Sidebar - hasActive:', hasActive, 'isVisible:', isVisible, 'offsetParent:', sidebar.offsetParent);
+                    console.log('[A11Y-DEBUG] findOpenedModal: Sidebar - hasActive:', hasActive);
                     
-                    // Retornar si tiene clase active O si es visible (más permisivo)
-                    if ((hasActive || isVisible) && sidebar.offsetParent !== null) {
+                    if (hasActive) {
                         console.log('[A11Y-DEBUG] findOpenedModal: RETURNING SIDEBAR AS OPENED MODAL');
                         return sidebar;
                     }
