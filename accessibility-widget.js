@@ -26,10 +26,12 @@
             this.sliderOpenMode = false; // Modo de navegación en slider abierto
             this.currentSliderElement = null; // Elemento slider actualmente navegado
 
-            // ========== Gestión de Modales ==========
+            // ========== Gestión de Modales y Menú ==========
             this.savedVirtualFocusIndex = -1; // Guardar índice antes de abrir modal
             this.isModalOpen = false; // Flag para saber si hay modal abierto
             this.modalCheckInterval = null; // Intervalo para detectar cierre de modal
+            this.savedParentIndexMap = null; // Guardar mapeo del padre cuando abre modal/menú
+            this.currentModalIndexMap = null; // Mapeo actual de elementos del modal/menú
 
             // ========== Preferencias ==========
             this.currentTheme = 'default';
@@ -935,6 +937,7 @@
         }
 
         createNumberedLabels() {
+            console.log('[A11Y-DEBUG] createNumberedLabels: Starting numbered labels creation');
             // Limpiar badges previos
             this.removeNumberedLabels();
 
@@ -953,18 +956,31 @@
 
             // MEJORADO: Detectar si hay un modal abierto
             const openedModal = this.findOpenedModal();
+            console.log('[A11Y-DEBUG] createNumberedLabels: Opened modal detected:', openedModal ? openedModal.id || openedModal.className : 'NONE');
             let elementsToNumber = [];
 
             if (openedModal) {
                 // Si hay modal abierto, solo numerar elementos dentro del modal
+                console.log('[A11Y-DEBUG] createNumberedLabels: Building elements for modal/menu');
                 elementsToNumber = this.buildReadableElementsInModal(openedModal);
+                console.log('[A11Y-DEBUG] createNumberedLabels: Found', elementsToNumber.length, 'elements in modal/menu');
+                
+                // Guardar el mapeo del padre si no lo hemos hecho ya
+                if (!this.savedParentIndexMap) {
+                    this.savedParentIndexMap = this.numberedIndexMap || [];
+                }
+                this.currentModalIndexMap = elementsToNumber;
             } else {
                 // Si no, usar el mapeo global
+                console.log('[A11Y-DEBUG] createNumberedLabels: No modal/menu open, using parent elements');
                 if (!this.numberedIndexMap || !this.numberedIndexMap.length) {
                     // Fallback: construir a partir de readableElements
                     this.buildReadableElementsList();
                 }
                 elementsToNumber = (this.numberedIndexMap || []);
+                // Limpiar estados guardados
+                this.savedParentIndexMap = null;
+                this.currentModalIndexMap = null;
             }
 
             // Mostrar sólo badges para entradas de tipo 'element' con contenido útil para la voz.
@@ -1010,11 +1026,6 @@
                     try { el.setAttribute('data-a11y-index', displayNumber); } catch (e) { }
                 } catch (e) { /* ignore */ }
             });
-
-            // Si estamos en modal, guardar referencia al mapeo del modal
-            if (openedModal) {
-                this.currentModalIndexMap = elementsToNumber;
-            }
 
             // Guardar el total de elementos
             this.totalNumberedElements = elementsToNumber.length + 1; // +1 para el 0
@@ -1120,25 +1131,57 @@
         // Monitorear cambios en estado de modales para recalcular badges
         startModalMonitoringForVoiceMode() {
             if (this._voiceModalCheckInterval) clearInterval(this._voiceModalCheckInterval);
+            if (this._menuMutationObserver) {
+                try { this._menuMutationObserver.disconnect(); } catch (e) { }
+                this._menuMutationObserver = null;
+            }
 
             let lastModalState = null;
 
+            // OBSERVADOR CRÍTICO: detectar cambios en la clase del menú (#menu-item)
+            try {
+                const sidebar = document.getElementById('menu-item');
+                if (sidebar) {
+                    this._menuMutationObserver = new MutationObserver(() => {
+                        if (!this.numberedVoiceMode) return;
+                        const currentModal = this.findOpenedModal();
+                        const currentModalState = currentModal ? currentModal.className : null;
+                        
+                        if (currentModalState !== lastModalState) {
+                            this.createNumberedLabels();
+                            lastModalState = currentModalState;
+                        }
+                    });
+                    
+                    this._menuMutationObserver.observe(sidebar, { 
+                        attributes: true, 
+                        attributeFilter: ['class']
+                    });
+                }
+            } catch (e) { /* ignore */ }
+
+            // INTERVALO de monitoreo como respaldo (más rápido para detectar cambios)
             this._voiceModalCheckInterval = setInterval(() => {
                 if (!this.numberedVoiceMode) {
-                    // Si el modo se desactivó, limpiar el intervalo
+                    // Si el modo se desactivó, limpiar
                     clearInterval(this._voiceModalCheckInterval);
+                    this._voiceModalCheckInterval = null;
+                    if (this._menuMutationObserver) {
+                        try { this._menuMutationObserver.disconnect(); } catch (e) { }
+                        this._menuMutationObserver = null;
+                    }
                     return;
                 }
 
                 const currentModal = this.findOpenedModal();
                 const currentModalState = currentModal ? currentModal.className : null;
 
-                // Si el estado cambió (se abrió o se cerró un modal), recalcular badges
+                // Si el estado cambió (se abrió o se cerró un modal/menú), recalcular badges
                 if (currentModalState !== lastModalState) {
                     this.createNumberedLabels();
                     lastModalState = currentModalState;
                 }
-            }, 500); // Chequear cada 500ms
+            }, 250); // Chequear cada 250ms (más rápido que antes)
         }
 
         stopNumberedVoiceRecognition() {
@@ -1147,10 +1190,15 @@
                     this.numberedVoiceRecog.abort();
                 } catch (e) { /* ignore */ }
             }
-            // Limpiar intervalo de monitoreo de modales
+            // Limpiar intervalo de monitoreo de modales/menú
             if (this._voiceModalCheckInterval) {
                 clearInterval(this._voiceModalCheckInterval);
                 this._voiceModalCheckInterval = null;
+            }
+            // Limpiar observador del menú
+            if (this._menuMutationObserver) {
+                try { this._menuMutationObserver.disconnect(); } catch (e) { }
+                this._menuMutationObserver = null;
             }
         }
 
@@ -1292,11 +1340,15 @@
                     if (el.hasAttribute && el.hasAttribute('aria-hidden') && el.getAttribute('aria-hidden') === 'true') return false;
                     if (el.hidden) return false;
                     let p = el.parentElement;
-                    while (p) {
+                    // CRÍTICO: parar en el modal para evitar while infinito
+                    while (p && p !== modal) {
                         if (p.hasAttribute && p.hasAttribute('aria-hidden') && p.getAttribute('aria-hidden') === 'true') return false;
                         p = p.parentElement;
                     }
-                    if (el.offsetParent === null) return false;
+                    // Para menú: ser más permisivo con offsetParent (puede ser null para elementos de menú)
+                    // Solo verificar que el modal mismo esté visible
+                    if (modal.offsetParent === null) return false;
+                    
                     try {
                         const st = window.getComputedStyle(el);
                         if (st && (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0)) return false;
@@ -1361,6 +1413,8 @@
             this.readableElements = Array.from(document.querySelectorAll(fullSelector))
                 .filter(el => {
                     if (el.closest && el.closest('#accessibility-widget')) return false;
+                    // CRÍTICO: Excluir elementos dentro del menú (#menu-item)
+                    if (el.closest && el.closest('#menu-item')) return false;
                     if (el.dataset && el.dataset.a11yRead === 'false') return false;
                     if (el.hasAttribute && el.hasAttribute('aria-hidden') && el.getAttribute('aria-hidden') === 'true') return false;
                     if (el.hidden) return false;
@@ -1384,6 +1438,9 @@
             this.readableElements.forEach(el => {
                 // Evitar numerar controles dentro del propio widget
                 if (el.closest && el.closest('#accessibility-widget')) return;
+                
+                // CRÍTICO: Evitar numerar elementos dentro del menú
+                if (el.closest && el.closest('#menu-item')) return;
 
                 // Saltar si alguno de sus ancestros ya fue numerado
                 let p = el.parentElement;
@@ -2258,34 +2315,70 @@
         }
         // ==================== HELPERS PARA DETECTAR CONTENIDO ABIERTO ====================
         findOpenedModal() {
-            // Selectores MEJORADOS para detectar múltiples tipos de modales Y collapses
-            const modalSelectors = [
-                // Bootstrap modales (detectar .show que es la clase que agrega Bootstrap cuando se abre)
-                '.modal.show',
-                '.modal.fade.show',
-                // Modales genéricos
+            // ORDEN DE PRIORIDAD IMPORTANTE:
+            // 1. Modales Bootstrap (.modal.show)
+            // 2. Collapses abiertos (.collapse.show)
+            // 3. Menú Sidebar (#menu-item.active)
+            // 4. Otros diálogos semánticos
+            
+            // PRIMERO: Detectar MODAL DIALOGS de Bootstrap (máxima prioridad)
+            try {
+                const bootstrapModals = document.querySelectorAll('.modal.show');
+                for (const modal of bootstrapModals) {
+                    if (modal && modal.offsetHeight > 0 && modal.offsetParent !== null) {
+                        const style = window.getComputedStyle(modal);
+                        if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) !== 0) {
+                            return modal;
+                        }
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            
+            // SEGUNDO: Detectar COLLAPSES/ACCORDIONS abiertos
+            try {
+                const openCollapses = document.querySelectorAll('.collapse.show');
+                for (const collapse of openCollapses) {
+                    if (collapse && collapse.offsetHeight > 0 && collapse.offsetParent !== null) {
+                        const style = window.getComputedStyle(collapse);
+                        if (style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) !== 0) {
+                            return collapse;
+                        }
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            
+            // TERCERO: Detectar MENÚ SIDEBAR (#menu-item.active)
+            // Este es el patrón que usan todas las páginas HTML
+            try {
+                const sidebar = document.getElementById('menu-item');
+                console.log('[A11Y-DEBUG] findOpenedModal: Checking sidebar element:', sidebar);
+                if (sidebar) {
+                    // Verificar si tiene clase 'active' O si está visible
+                    const hasActive = sidebar.classList.contains('active');
+                    const style = window.getComputedStyle(sidebar);
+                    const isVisible = style.display !== 'none' && style.visibility !== 'hidden' && parseFloat(style.opacity) !== 0;
+                    console.log('[A11Y-DEBUG] findOpenedModal: Sidebar - hasActive:', hasActive, 'isVisible:', isVisible, 'offsetParent:', sidebar.offsetParent);
+                    
+                    // Retornar si tiene clase active O si es visible (más permisivo)
+                    if ((hasActive || isVisible) && sidebar.offsetParent !== null) {
+                        console.log('[A11Y-DEBUG] findOpenedModal: RETURNING SIDEBAR AS OPENED MODAL');
+                        return sidebar;
+                    }
+                }
+            } catch (e) { console.log('[A11Y-DEBUG] findOpenedModal: Error checking sidebar:', e); }
+            
+            // CUARTO: Detectar otros diálogos semánticos y modales genéricos
+            const otherSelectors = [
                 '[role="dialog"]:not([style*="display: none"])',
                 '[role="alertdialog"]:not([style*="display: none"])',
                 '[aria-modal="true"]',
-                // Dialog HTML5
                 'dialog[open]',
-                // Clases comunes
                 '.modal-content:not([style*="display: none"])',
                 '.modal:not([style*="display: none"])',
-                '.overlay:not([style*="display: none"])',
-                '.popup:not([style*="display: none"])',
-                '.drawer:not([style*="display: none"])',
-                '[data-modal]:not([style*="display: none"])',
-                // Para LETA-2024 y topic4_4
-                '.modal-dialog:not([style*="display: none"])',
-                '[data-a11y-modal]',
-                // MEJORADO: Detectar collapses/accordions abiertos (Bootstrap collapse)
-                '.collapse.show',
-                '[data-toggle="collapse"].active + .collapse.show',
-                '.colapsar-contenido:not([style*="display: none"])'
+                '[data-a11y-modal]'
             ];
-
-            for (const selector of modalSelectors) {
+            
+            for (const selector of otherSelectors) {
                 try {
                     const elements = document.querySelectorAll(selector);
                     for (const element of elements) {
@@ -2296,10 +2389,9 @@
                             }
                         }
                     }
-                } catch (e) {
-                    // Ignorar errores de selector
-                }
+                } catch (e) { /* ignore */ }
             }
+            
             return null;
         }
 
