@@ -1121,26 +1121,24 @@
         startModalMonitoringForVoiceMode() {
             if (this._voiceModalCheckInterval) clearInterval(this._voiceModalCheckInterval);
 
-            let lastModalId = null;
+            let lastModalState = null;
 
             this._voiceModalCheckInterval = setInterval(() => {
                 if (!this.numberedVoiceMode) {
                     // Si el modo se desactivó, limpiar el intervalo
                     clearInterval(this._voiceModalCheckInterval);
-                    this._voiceModalCheckInterval = null;
                     return;
                 }
 
                 const currentModal = this.findOpenedModal();
-                // MEJORADO: Usar ID o className como identificador único
-                const currentModalId = currentModal ? (currentModal.id || currentModal.className) : null;
+                const currentModalState = currentModal ? currentModal.className : null;
 
                 // Si el estado cambió (se abrió o se cerró un modal), recalcular badges
-                if (currentModalId !== lastModalId) {
+                if (currentModalState !== lastModalState) {
                     this.createNumberedLabels();
-                    lastModalId = currentModalId;
+                    lastModalState = currentModalState;
                 }
-            }, 300); // Chequear cada 300ms para detección más rápida
+            }, 500); // Chequear cada 500ms
         }
 
         stopNumberedVoiceRecognition() {
@@ -1278,19 +1276,9 @@
         }
 
         // ==================== NAVEGACIÓN ====================
-        // Construir lista de elementos SOLO dentro de un modal/collapse y retornar mapeo numerado
+        // Construir lista de elementos SOLO dentro de un modal y retornar mapeo numerado
         buildReadableElementsInModal(modal) {
             if (!modal) return [];
-            
-            // MEJORADO: Detectar si es un collapse o un modal tradicional
-            let searchContainer = modal;
-            
-            // Si es un elemento collapse.show, buscar su contenido dentro
-            if (modal.classList && modal.classList.contains('collapse')) {
-                searchContainer = modal;
-            } else if (modal.classList && modal.classList.contains('colapsar-contenido')) {
-                searchContainer = modal;
-            }
             
             const baseSelector = 'p, li, h1, h2, h3, h4, h5, h6, button, a, img[alt], [data-a11y-readable]';
             const formSelector = 'input[type="text"], input[type="email"], input[type="password"], input[type="search"], input[type="number"], textarea, select';
@@ -1298,13 +1286,13 @@
             
             const fullSelector = `${baseSelector}, ${formSelector}, ${educationSelector}`;
             
-            this.readableElements = Array.from(searchContainer.querySelectorAll(fullSelector))
+            this.readableElements = Array.from(modal.querySelectorAll(fullSelector))
                 .filter(el => {
                     if (el.dataset && el.dataset.a11yRead === 'false') return false;
                     if (el.hasAttribute && el.hasAttribute('aria-hidden') && el.getAttribute('aria-hidden') === 'true') return false;
                     if (el.hidden) return false;
                     let p = el.parentElement;
-                    while (p && p !== searchContainer) {
+                    while (p) {
                         if (p.hasAttribute && p.hasAttribute('aria-hidden') && p.getAttribute('aria-hidden') === 'true') return false;
                         p = p.parentElement;
                     }
@@ -1316,7 +1304,7 @@
                     return true;
                 });
 
-            // MEJORADO: Crear mapeo numerado para elementos del modal/collapse
+            // MEJORADO: Crear mapeo numerado para elementos del modal
             const modalIndexMap = [];
             const seen = new Set();
             let counter = 1;
@@ -1330,14 +1318,14 @@
                 // Para inputs/textareas: buscar contenido descriptivo real
                 if ((tag === 'input' || tag === 'textarea') && !elementText) {
                     if (el.id) {
-                        const label = searchContainer.querySelector(`label[for="${el.id}"]`);
+                        const label = modal.querySelector(`label[for="${el.id}"]`);
                         if (label) elementText = label.textContent.trim();
                     }
                     if (!elementText) {
-                        // Buscar en elementos cercanos dentro del contenedor
+                        // Buscar en elementos cercanos dentro del modal
                         let parent = el.parentElement;
                         let depth = 0;
-                        while (parent && depth < 3 && parent !== searchContainer) {
+                        while (parent && depth < 3 && parent !== modal) {
                             const nearbyText = parent.querySelector('p:not(.sr-only), span:not(.sr-only), label');
                             if (nearbyText && nearbyText !== el) {
                                 elementText = nearbyText.textContent.trim();
