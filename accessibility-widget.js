@@ -935,6 +935,9 @@
         }
 
         createNumberedLabels() {
+            // Limpiar badges previos
+            this.removeNumberedLabels();
+
             // El 0 es el botón del widget
             const toggleBtn = document.getElementById('a11y-toggle-btn');
             if (toggleBtn) {
@@ -948,23 +951,29 @@
             // Guardar badges para limpieza futura
             this.numberedBadgeEls = [];
 
-            // Enumerar a partir del mapeo global "numberedIndexMap"
-            let num = 1;
-            if (!this.numberedIndexMap || !this.numberedIndexMap.length) {
-                // Fallback: si no existe el mapeo, construir a partir de readableElements
-                this.buildReadableElementsList();
+            // MEJORADO: Detectar si hay un modal abierto
+            const openedModal = this.findOpenedModal();
+            let elementsToNumber = [];
+
+            if (openedModal) {
+                // Si hay modal abierto, solo numerar elementos dentro del modal
+                elementsToNumber = this.buildReadableElementsInModal(openedModal);
+            } else {
+                // Si no, usar el mapeo global
+                if (!this.numberedIndexMap || !this.numberedIndexMap.length) {
+                    // Fallback: construir a partir de readableElements
+                    this.buildReadableElementsList();
+                }
+                elementsToNumber = (this.numberedIndexMap || []);
             }
 
             // Mostrar sólo badges para entradas de tipo 'element' con contenido útil para la voz.
-            (this.numberedIndexMap || []).forEach(entry => {
+            elementsToNumber.forEach((entry, index) => {
                 if (entry.type !== 'element') return; // skip select-option (shown on demand)
                 const el = entry.el;
                 const tag = el.tagName.toLowerCase();
 
                 // FILTRO ESTRICTO: no mostrar badges para elementos sin contenido legible real
-                // - Si no tiene texto (entry.text está vacío), no mostrar
-                // - Audio/video sin etiqueta descriptiva
-                // - Input/textarea sin contexto real
                 if (!entry.text || entry.text.trim() === '') return; // skip badge if no readable text
                 
                 const isMediaWithoutLabel = (tag === 'audio' || tag === 'video') && !entry.text;
@@ -974,8 +983,10 @@
                     const r = el.getBoundingClientRect();
                     const badge = document.createElement('div');
                     badge.className = 'a11y-number-badge';
-                    badge.textContent = entry.number;
-                    badge.setAttribute('data-a11y-number', entry.number);
+                    // Si estamos en modal, renumerar desde 1; si no, usar el número original
+                    const displayNumber = openedModal ? (index + 1) : entry.number;
+                    badge.textContent = displayNumber;
+                    badge.setAttribute('data-a11y-number', displayNumber);
                     badge.setAttribute('aria-hidden', 'true');
                     // Position absolute in body to avoid layout changes
                     Object.assign(badge.style, {
@@ -996,12 +1007,17 @@
                     this.numberedBadgeEls.push(badge);
 
                     // Marcar el índice en el elemento para referencia rápida
-                    try { el.setAttribute('data-a11y-index', entry.number); } catch (e) { }
+                    try { el.setAttribute('data-a11y-index', displayNumber); } catch (e) { }
                 } catch (e) { /* ignore */ }
             });
 
-            // Guardar el total de elementos (incluye opciones)
-            this.totalNumberedElements = (this.numberedIndexMap || []).length + 1; // +1 para el 0
+            // Si estamos en modal, guardar referencia al mapeo del modal
+            if (openedModal) {
+                this.currentModalIndexMap = elementsToNumber;
+            }
+
+            // Guardar el total de elementos
+            this.totalNumberedElements = elementsToNumber.length + 1; // +1 para el 0
         }
 
         removeNumberedLabels() {
@@ -1093,9 +1109,38 @@
                 };
 
                 this.numberedVoiceRecog.start();
+
+                // MEJORADO: Monitorear cambios de modales mientras el modo de voz está activo
+                this.startModalMonitoringForVoiceMode();
             } catch (e) {
                 console.warn('No se pudo iniciar reconocimiento numerado:', e);
             }
+        }
+
+        // Monitorear cambios en estado de modales para recalcular badges
+        startModalMonitoringForVoiceMode() {
+            if (this._voiceModalCheckInterval) clearInterval(this._voiceModalCheckInterval);
+
+            let lastModalId = null;
+
+            this._voiceModalCheckInterval = setInterval(() => {
+                if (!this.numberedVoiceMode) {
+                    // Si el modo se desactivó, limpiar el intervalo
+                    clearInterval(this._voiceModalCheckInterval);
+                    this._voiceModalCheckInterval = null;
+                    return;
+                }
+
+                const currentModal = this.findOpenedModal();
+                // MEJORADO: Usar ID o className como identificador único
+                const currentModalId = currentModal ? (currentModal.id || currentModal.className) : null;
+
+                // Si el estado cambió (se abrió o se cerró un modal), recalcular badges
+                if (currentModalId !== lastModalId) {
+                    this.createNumberedLabels();
+                    lastModalId = currentModalId;
+                }
+            }, 300); // Chequear cada 300ms para detección más rápida
         }
 
         stopNumberedVoiceRecognition() {
@@ -1103,6 +1148,11 @@
                 try {
                     this.numberedVoiceRecog.abort();
                 } catch (e) { /* ignore */ }
+            }
+            // Limpiar intervalo de monitoreo de modales
+            if (this._voiceModalCheckInterval) {
+                clearInterval(this._voiceModalCheckInterval);
+                this._voiceModalCheckInterval = null;
             }
         }
 
@@ -1135,8 +1185,17 @@
                 return;
             }
 
-            // buscar en el mapeo numerado
-            const entry = (this.numberedIndexMap || []).find(e => e.number === num);
+            // MEJORADO: Detectar si hay modal abierto y usar su mapeo
+            const openedModal = this.findOpenedModal();
+            let indexMap = this.numberedIndexMap;
+            
+            if (openedModal && this.currentModalIndexMap) {
+                // Si hay modal, usar el mapeo del modal
+                indexMap = this.currentModalIndexMap;
+            }
+
+            // Buscar en el mapeo numerado (global o del modal)
+            const entry = (indexMap || []).find(e => e.number === num);
             if (!entry) {
                 const msg = `Elemento número ${num} no encontrado.`;
                 this.speak(msg, this.defaultLang);
@@ -1219,9 +1278,19 @@
         }
 
         // ==================== NAVEGACIÓN ====================
-        // Construir lista de elementos SOLO dentro de un modal
+        // Construir lista de elementos SOLO dentro de un modal/collapse y retornar mapeo numerado
         buildReadableElementsInModal(modal) {
-            if (!modal) return;
+            if (!modal) return [];
+            
+            // MEJORADO: Detectar si es un collapse o un modal tradicional
+            let searchContainer = modal;
+            
+            // Si es un elemento collapse.show, buscar su contenido dentro
+            if (modal.classList && modal.classList.contains('collapse')) {
+                searchContainer = modal;
+            } else if (modal.classList && modal.classList.contains('colapsar-contenido')) {
+                searchContainer = modal;
+            }
             
             const baseSelector = 'p, li, h1, h2, h3, h4, h5, h6, button, a, img[alt], [data-a11y-readable]';
             const formSelector = 'input[type="text"], input[type="email"], input[type="password"], input[type="search"], input[type="number"], textarea, select';
@@ -1229,13 +1298,13 @@
             
             const fullSelector = `${baseSelector}, ${formSelector}, ${educationSelector}`;
             
-            this.readableElements = Array.from(modal.querySelectorAll(fullSelector))
+            this.readableElements = Array.from(searchContainer.querySelectorAll(fullSelector))
                 .filter(el => {
                     if (el.dataset && el.dataset.a11yRead === 'false') return false;
                     if (el.hasAttribute && el.hasAttribute('aria-hidden') && el.getAttribute('aria-hidden') === 'true') return false;
                     if (el.hidden) return false;
                     let p = el.parentElement;
-                    while (p) {
+                    while (p && p !== searchContainer) {
                         if (p.hasAttribute && p.hasAttribute('aria-hidden') && p.getAttribute('aria-hidden') === 'true') return false;
                         p = p.parentElement;
                     }
@@ -1246,6 +1315,46 @@
                     } catch (e) { }
                     return true;
                 });
+
+            // MEJORADO: Crear mapeo numerado para elementos del modal/collapse
+            const modalIndexMap = [];
+            const seen = new Set();
+            let counter = 1;
+
+            this.readableElements.forEach(el => {
+                if (seen.has(el)) return;
+
+                const tag = el.tagName.toLowerCase();
+                let elementText = this.getElementTextWithoutBadge(el) || el.innerText || el.alt || '';
+
+                // Para inputs/textareas: buscar contenido descriptivo real
+                if ((tag === 'input' || tag === 'textarea') && !elementText) {
+                    if (el.id) {
+                        const label = searchContainer.querySelector(`label[for="${el.id}"]`);
+                        if (label) elementText = label.textContent.trim();
+                    }
+                    if (!elementText) {
+                        // Buscar en elementos cercanos dentro del contenedor
+                        let parent = el.parentElement;
+                        let depth = 0;
+                        while (parent && depth < 3 && parent !== searchContainer) {
+                            const nearbyText = parent.querySelector('p:not(.sr-only), span:not(.sr-only), label');
+                            if (nearbyText && nearbyText !== el) {
+                                elementText = nearbyText.textContent.trim();
+                                if (elementText) break;
+                            }
+                            parent = parent.parentElement;
+                            depth++;
+                        }
+                    }
+                    if (!elementText) return; // Skip si no tiene contenido
+                }
+
+                seen.add(el);
+                modalIndexMap.push({ number: counter++, type: 'element', el, text: elementText });
+            });
+
+            return modalIndexMap;
         }
         
         // MEJORADO: buildReadableElementsList()
@@ -2161,7 +2270,7 @@
         }
         // ==================== HELPERS PARA DETECTAR CONTENIDO ABIERTO ====================
         findOpenedModal() {
-            // Selectores MEJORADOS para detectar múltiples tipos de modales
+            // Selectores MEJORADOS para detectar múltiples tipos de modales Y collapses
             const modalSelectors = [
                 // Bootstrap modales (detectar .show que es la clase que agrega Bootstrap cuando se abre)
                 '.modal.show',
@@ -2181,7 +2290,11 @@
                 '[data-modal]:not([style*="display: none"])',
                 // Para LETA-2024 y topic4_4
                 '.modal-dialog:not([style*="display: none"])',
-                '[data-a11y-modal]'
+                '[data-a11y-modal]',
+                // MEJORADO: Detectar collapses/accordions abiertos (Bootstrap collapse)
+                '.collapse.show',
+                '[data-toggle="collapse"].active + .collapse.show',
+                '.colapsar-contenido:not([style*="display: none"])'
             ];
 
             for (const selector of modalSelectors) {
