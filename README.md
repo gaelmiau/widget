@@ -1,21 +1,32 @@
 # Widget de Accesibilidad — Instrucciones de Integración
 
-Este README explica cómo integrar y usar el `AccessibilityWidget` en cualquier sitio HTML. Cubre desde la inclusión de los archivos hasta cómo controlar qué se lee con el motor TTS, idiomas por elemento, modos de lectura y buenas prácticas.
+**Versión 2.0 - Comandos de Voz Mejorados** 🎉
 
-**Contenido**
-- Introducción
-- Integración rápida
-- Configuración de idioma global y por elemento
-- Qué lee y qué no lee el widget
-- Controles de lectura (TTS)
-- Modo lectura por secciones, Bionic y Dislexia
-- Comandos de voz por números
-- Preferencias y persistencia
-- Compatibilidad y resolución de problemas
+Este README explica cómo integrar y usar el `AccessibilityWidget` en cualquier sitio HTML. Cubre desde la inclusión de los archivos hasta cómo controlar qué se lee con el motor TTS, idiomas por elemento, modos de lectura y los nuevos **comandos de voz por números mejorados**.
 
-## Introducción
+## 📋 Contenido
 
-El widget añade un botón flotante en la esquina inferior derecha que abre un panel con opciones de accesibilidad: tamaño de texto, temas, cursor, lector de texto (TTS), modos de lectura por secciones, Bionic Reading y Modo Dislexia.
+- **[Introducción](#introducción)** - Qué es el widget
+- **[Integración rápida](#integración-rápida)** - 3 pasos para empezar
+- **[Configuración de idioma](#configuración-de-idioma-global-y-por-elemento)** - Soporte multiidioma
+- **[Comandos de Voz v2.0](#comandos-de-voz-por-números---nuevo)** - ⭐ LO NUEVO
+- **[Qué se lee](#qué-lee-y-qué-no-lee-el-widget)** - Control de contenido
+- **[Controles de lectura](#controles-de-lectura-tts)** - TTS, Dislexia, Bionic
+- **[Preferencias](#preferencias-y-persistencia)** - Guardar configuración
+- **[Soporte](#compatibilidad-y-resolución-de-problemas)** - Navegadores y problemas
+
+## 🎯 Introducción
+
+El widget añade un botón flotante en la esquina inferior derecha que abre un panel con opciones de accesibilidad:
+
+✅ **Tamaño de texto** - 4 opciones de zoom  
+✅ **Temas** - Oscuro, Alto contraste, etc.  
+✅ **Cursor** - Tamaño personalizado  
+✅ **Lector de texto (TTS)** - Lee párrafos completos  
+✅ **Lectura por secciones** - Navega con flechas  
+✅ **Bionic Reading** - Resalta palabras  
+✅ **Modo Dislexia** - Fuente OpenDyslexic  
+✅ **Comandos de Voz v2.0** - ⭐ Di un número para interactuar  
 
 Los ficheros principales son:
 
@@ -24,7 +35,7 @@ Los ficheros principales son:
 
 Coloca ambos en la carpeta de tu proyecto y sigue la integración rápida.
 
-## Integración rápida
+## ⚡ Integración rápida
 
 1) Copia `accessibility-widget.js` y `accessibility-widget.css` en tu proyecto (por ejemplo, en el mismo directorio que tu `index.html`).
 

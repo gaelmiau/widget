@@ -918,8 +918,11 @@
                 btn.textContent = 'Desactivar Comandos por Voz';
                 btn.classList.add('active');
                 
-                // Feedback al usuario
-                const feedbackText = `Comandos por voz activados. Total de elementos detectados: ${this.totalNumberedElements - 1}. Diga un número para leer o interactuar con ese elemento. Diga cero para abrir el panel.`;
+                // Feedback al usuario con instrucciones claras
+                const totalElements = (this.numberedIndexMap || []).length;
+                const feedbackText = totalElements > 0
+                    ? `Comandos de voz activados. Se han detectado ${totalElements} elementos interactivos en esta página. Di un número para leer o interactuar con ese elemento. Por ejemplo, di "uno" para el primer elemento, o "cero" para abrir el panel de opciones.`
+                    : `Comandos de voz activados. No se detectaron elementos interactivos en esta página. Intenta navegar a una página con más contenido o botones.`;
                 this.speak(feedbackText, this.defaultLang);
                 
                 this.autoClosePanel();
@@ -932,150 +935,156 @@
                 btn.classList.remove('active');
                 
                 // Feedback
-                this.speak('Comandos por voz desactivados.', this.defaultLang);
+                this.speak('Comandos de voz desactivados.', this.defaultLang);
             }
         }
 
         createNumberedLabels() {
-            console.log('[A11Y-DEBUG] createNumberedLabels: Starting numbered labels creation');
+            console.log('[A11Y-DEBUG] createNumberedLabels: Iniciando creación de badges numerados');
+            
             // Limpiar badges previos
             this.removeNumberedLabels();
-
-            // El 0 es el botón del widget
-            const toggleBtn = document.getElementById('a11y-toggle-btn');
-            if (toggleBtn) {
-                const badge = document.createElement('div');
-                badge.className = 'a11y-number-badge';
-                badge.textContent = '0';
-                badge.setAttribute('data-a11y-number', '0');
-                toggleBtn.appendChild(badge);
-            }
-
-            // Guardar badges para limpieza futura
             this.numberedBadgeEls = [];
 
-            // MEJORADO: Detectar si hay un modal abierto
+            // PASO 1: Badge del botón toggle (número 0)
+            const toggleBtn = document.getElementById('a11y-toggle-btn');
+            if (toggleBtn) {
+                const badge0 = this.createBadgeElement('0', toggleBtn, false);
+                if (badge0) this.numberedBadgeEls.push(badge0);
+            }
+
+            // PASO 2: Detectar si hay modal abierto
             const openedModal = this.findOpenedModal();
-            console.log('[A11Y-DEBUG] createNumberedLabels: Opened modal detected:', openedModal ? openedModal.id || openedModal.className : 'NONE');
             let elementsToNumber = [];
 
             if (openedModal) {
-                // Si hay modal abierto, solo numerar elementos dentro del modal
-                console.log('[A11Y-DEBUG] createNumberedLabels: Building elements for modal/menu');
+                console.log('[A11Y-DEBUG] Modal detectado, usando elementos del modal');
                 elementsToNumber = this.buildReadableElementsInModal(openedModal);
-                console.log('[A11Y-DEBUG] createNumberedLabels: Found', elementsToNumber.length, 'elements in modal/menu');
-                
-                // Guardar el mapeo del padre si no lo hemos hecho ya
+                this.currentModalIndexMap = elementsToNumber;
+                // Guardar estado anterior para restaurar después
                 if (!this.savedParentIndexMap) {
                     this.savedParentIndexMap = this.numberedIndexMap || [];
                 }
-                this.currentModalIndexMap = elementsToNumber;
             } else {
-                // Si no, usar el mapeo global
-                console.log('[A11Y-DEBUG] createNumberedLabels: No modal/menu open, using parent elements');
+                console.log('[A11Y-DEBUG] Sin modal, usando elementos globales');
+                // Asegurar que tenemos el mapeo
                 if (!this.numberedIndexMap || !this.numberedIndexMap.length) {
-                    // Fallback: construir a partir de readableElements
                     this.buildReadableElementsList();
                 }
-                elementsToNumber = (this.numberedIndexMap || []);
-                // Limpiar estados guardados
-                this.savedParentIndexMap = null;
+                elementsToNumber = this.numberedIndexMap || [];
                 this.currentModalIndexMap = null;
+                this.savedParentIndexMap = null;
             }
 
-            // Mostrar sólo badges para entradas de tipo 'element' con contenido útil para la voz.
-            elementsToNumber.forEach((entry, index) => {
-                if (entry.type !== 'element') return; // skip select-option (shown on demand)
-                const el = entry.el;
-                const tag = el.tagName.toLowerCase();
-
-                // FILTRO ESTRICTO: no mostrar badges para elementos sin contenido legible real
-                if (!entry.text || entry.text.trim() === '') return; // skip badge if no readable text
+            // PASO 3: Crear badges para cada elemento
+            elementsToNumber.forEach((entry) => {
+                if (entry.type !== 'element') return; // Solo elementos, no opciones de select
                 
-                const isMediaWithoutLabel = (tag === 'audio' || tag === 'video') && !entry.text;
-                if (isMediaWithoutLabel) return; // skip badge for these
-
-                try {
-                    const r = el.getBoundingClientRect();
-                    const badge = document.createElement('div');
-                    badge.className = 'a11y-number-badge';
-                    // Si estamos en modal, renumerar desde 1; si no, usar el número original
-                    const displayNumber = openedModal ? (index + 1) : entry.number;
-                    badge.textContent = displayNumber;
-                    badge.setAttribute('data-a11y-number', displayNumber);
-                    badge.setAttribute('aria-hidden', 'true');
-                    
-                    // Detectar si el elemento está en el menú
-                    const isInMenu = openedModal && openedModal.id === 'menu-item';
-                    
-                    // Los elementos del menú (fixed) usan position: fixed
-                    // Los elementos de la página (normal) usan position: absolute con scroll compensation
-                    // Forzamos dimensiones y evitar transformaciones para que no escalen al hacer scroll
-                    // Calcular posición de forma que el badge quede centrado verticalmente
-                    const badgeSize = 22; // px (coincide con width/height más abajo)
-                    const offset = 6; // separación horizontal respecto al borde del elemento
-                    const centeredTopViewport = Math.max(4, r.top + (r.height / 2) - (badgeSize / 2));
-                    const centeredTopDocument = Math.max(4, r.top + window.scrollY + (r.height / 2) - (badgeSize / 2));
-
-                    Object.assign(badge.style, {
-                        position: isInMenu ? 'fixed' : 'absolute',
-                        top: isInMenu ? `${centeredTopViewport}px` : `${centeredTopDocument}px`,
-                        left: isInMenu ? `${r.right + offset}px` : `${r.right + window.scrollX + offset}px`,
-                        zIndex: 99999,
-                        background: 'rgba(255,107,107,0.95)',
-                        color: '#fff',
-                        padding: '0px',
-                        width: '22px',
-                        height: '22px',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        textAlign: 'center',
-                        direction: 'ltr',
-                        fontWeight: '600',
-                        fontFamily: 'Arial, Helvetica, sans-serif',
-                        borderRadius: '12px',
-                        fontSize: '11px',
-                        pointerEvents: 'none',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                        boxSizing: 'border-box',
-                        transform: 'none',
-                        transformOrigin: 'center center',
-                        willChange: 'top, left'
-                    });
-                    // Evitar que reglas externas afecten el badge (usar !important)
-                    try {
-                        badge.style.setProperty('transform', 'none', 'important');
-                        badge.style.setProperty('font-size', '11px', 'important');
-                        badge.style.setProperty('width', '22px', 'important');
-                        badge.style.setProperty('height', '22px', 'important');
-                    } catch (e) { /* ignore */ }
-                    document.body.appendChild(badge);
-                    // Guardar referencia directa al elemento para updateBadgePositions
-                    badge._targetElement = el;
-                    badge._isInMenu = isInMenu;
+                const el = entry.el;
+                const isInMenu = openedModal && openedModal.id === 'menu-item';
+                const badge = this.createBadgeElement(entry.number, el, isInMenu);
+                
+                if (badge) {
                     this.numberedBadgeEls.push(badge);
-
-                    // Marcar el índice en el elemento para referencia rápida
-                    try { el.setAttribute('data-a11y-index', displayNumber); } catch (e) { }
-                } catch (e) { /* ignore */ }
+                    // Marcar elemento con su número para referencia
+                    try { el.setAttribute('data-a11y-number', entry.number); } catch (e) {}
+                }
             });
 
-            // Guardar el total de elementos
+            // PASO 4: Actualizar total de elementos
             this.totalNumberedElements = elementsToNumber.length + 1; // +1 para el 0
+            console.log(`[A11Y-DEBUG] Total de elementos detectados: ${this.totalNumberedElements}`);
             
-            // Configurar listener de scroll para actualizar posiciones de badges
-            if (this.numberedBadgeEls && this.numberedBadgeEls.length > 0) {
-                // Remover listener anterior si existe
-                if (this._badgeScrollListener) {
-                    window.removeEventListener('scroll', this._badgeScrollListener);
+            // PASO 5: Configurar listener de scroll para actualizar posiciones
+            this.setupBadgeScrollListener();
+        }
+
+        /**
+         * Crear un elemento badge para un elemento del DOM
+         */
+        createBadgeElement(number, targetEl, isInMenu = false) {
+            try {
+                const r = targetEl.getBoundingClientRect();
+                
+                // Si el elemento no es visible, no crear badge
+                if (r.width <= 0 || r.height <= 0) {
+                    return null;
                 }
-                // Crear listener con requestAnimationFrame para mejor performance
-                this._badgeScrollListener = () => {
-                    requestAnimationFrame(() => this.updateBadgePositions());
-                };
-                window.addEventListener('scroll', this._badgeScrollListener);
+
+                const badge = document.createElement('div');
+                badge.className = 'a11y-number-badge';
+                badge.textContent = number;
+                badge.setAttribute('data-a11y-number', number);
+                badge.setAttribute('aria-hidden', 'true');
+
+                // Calcular posición centrada respecto al elemento
+                const badgeSize = 24;
+                const offsetFromElement = 8;
+                
+                const topPosition = isInMenu 
+                    ? Math.max(4, r.top + (r.height / 2) - (badgeSize / 2))
+                    : Math.max(4, r.top + window.scrollY + (r.height / 2) - (badgeSize / 2));
+                
+                const leftPosition = isInMenu
+                    ? Math.round(r.right + offsetFromElement)
+                    : Math.round(r.right + window.scrollX + offsetFromElement);
+
+                // Aplicar estilos mejorados
+                Object.assign(badge.style, {
+                    position: isInMenu ? 'fixed' : 'absolute',
+                    top: `${Math.round(topPosition)}px`,
+                    left: `${Math.round(leftPosition)}px`,
+                    width: '24px',
+                    height: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#FF6B35',
+                    color: 'white',
+                    borderRadius: '50%',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    fontFamily: 'Arial, sans-serif',
+                    boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
+                    zIndex: '99999',
+                    pointerEvents: 'none',
+                    border: '2px solid white',
+                    boxSizing: 'border-box',
+                    margin: '0',
+                    padding: '0'
+                });
+
+                // Guardar referencias para actualización posterior
+                badge._targetElement = targetEl;
+                badge._isInMenu = isInMenu;
+
+                document.body.appendChild(badge);
+                return badge;
+            } catch (e) {
+                console.warn('[A11Y-DEBUG] Error al crear badge:', e);
+                return null;
             }
+        }
+
+        /**
+         * Configurar listener de scroll para actualizar posiciones de badges
+         */
+        setupBadgeScrollListener() {
+            // Remover listener anterior si existe
+            if (this._badgeScrollListener) {
+                window.removeEventListener('scroll', this._badgeScrollListener);
+            }
+
+            if (!this.numberedBadgeEls || this.numberedBadgeEls.length === 0) {
+                return;
+            }
+
+            // Usar requestAnimationFrame para mejor performance
+            this._badgeScrollListener = () => {
+                requestAnimationFrame(() => this.updateBadgePositions());
+            };
+
+            window.addEventListener('scroll', this._badgeScrollListener);
         }
 
         removeNumberedLabels() {
@@ -1150,84 +1159,102 @@
             try {
                 this.numberedVoiceRecog = new Recognition();
                 this.numberedVoiceRecog.lang = this.defaultLang || 'es-ES';
-                // Solo obtenemos resultados finales para evitar duplicados (interim puede disparar varias veces)
                 this.numberedVoiceRecog.continuous = true;
                 this.numberedVoiceRecog.interimResults = false;
+                this.numberedVoiceRecog.maxAlternatives = 1;
 
                 this.numberedVoiceRecog.onstart = () => {
                     this.numberedVoiceRecog._isRunning = true;
-                    console.log('[A11Y-DEBUG] Speech recognition started');
+                    console.log('[A11Y-DEBUG] Reconocimiento de voz iniciado - esperando comando');
                 };
 
                 this.numberedVoiceRecog.onresult = (event) => {
                     for (let i = event.resultIndex; i < event.results.length; i++) {
-                        // Ignorar resultados intermedios (si los hubiera)
+                        // Solo procesar resultados finales
                         if (!event.results[i].isFinal) continue;
 
                         const transcript = event.results[i][0].transcript.toLowerCase().trim();
+                        console.log(`[A11Y-DEBUG] Transcript detectado: "${transcript}"`);
 
-                        // Palabras clave para desactivar o cancelar
-                        if (transcript.includes('desactivar') || transcript.includes('salir') || transcript.includes('cancelar')) {
+                        // Palabras clave para desactivar
+                        if (/desactivar|salir|cancelar/.test(transcript)) {
+                            console.log('[A11Y-DEBUG] Comando de desactivación detectado');
                             this.toggleNumberedVoiceMode();
                             return;
                         }
 
-                        // Palabras clave para cerrar el panel
-                        if (transcript.includes('cerrar') || transcript.includes('close')) {
-                            if (this.isOpen) this.closePanel();
+                        // Palabras clave para cerrar panel
+                        if (/cerrar|close/.test(transcript)) {
+                            if (this.isOpen) {
+                                console.log('[A11Y-DEBUG] Cerrando panel');
+                                this.closePanel();
+                            }
                             return;
                         }
 
-                        // Mapa de números (palabras)
+                        // Mapa de números soportados (español e inglés)
                         const numberWords = {
-                            'cero': 0, 'zero': 0,
-                            'uno': 1, 'one': 1,
-                            'dos': 2, 'two': 2,
-                            'tres': 3, 'three': 3,
-                            'cuatro': 4, 'four': 4,
-                            'cinco': 5, 'five': 5,
-                            'seis': 6, 'six': 6,
-                            'siete': 7, 'seven': 7,
-                            'ocho': 8, 'eight': 8,
-                            'nueve': 9, 'nine': 9,
-                            'diez': 10, 'ten': 10
+                            'cero': 0, 'zero': 0, '0': 0,
+                            'uno': 1, 'one': 1, '1': 1,
+                            'dos': 2, 'two': 2, '2': 2,
+                            'tres': 3, 'three': 3, '3': 3,
+                            'cuatro': 4, 'four': 4, '4': 4,
+                            'cinco': 5, 'five': 5, '5': 5,
+                            'seis': 6, 'six': 6, '6': 6,
+                            'siete': 7, 'seven': 7, '7': 7,
+                            'ocho': 8, 'eight': 8, '8': 8,
+                            'nueve': 9, 'nine': 9, '9': 9,
+                            'diez': 10, 'ten': 10, '10': 10
                         };
 
-                        // Extraer número del transcript usando regex para evitar falsos positivos
-                        const extractedNum = this.extractNumberFromTranscript(transcript, numberWords, this.totalNumberedElements);
+                        // Extraer número del transcript
+                        const extractedNum = this.extractNumberFromTranscript(
+                            transcript, 
+                            numberWords, 
+                            this.totalNumberedElements
+                        );
+
                         if (extractedNum !== null && extractedNum < this.totalNumberedElements) {
+                            console.log(`[A11Y-DEBUG] Número extraído: ${extractedNum}`);
                             this.handleNumberedVoiceCommand(extractedNum);
                             return;
+                        } else {
+                            console.log(`[A11Y-DEBUG] Número no válido o fuera de rango: ${extractedNum}`);
                         }
-
                     }
                 };
 
                 this.numberedVoiceRecog.onerror = (e) => {
-                    console.warn('Error STT numerado:', e.error);
-                    // No detener en errores; continuar escuchando incluso después de 'no-speech'
+                    console.warn(`[A11Y-DEBUG] Error STT: ${e.error}`);
+                    // Continuar escuchando; no detener en errores como 'no-speech'
                 };
 
                 this.numberedVoiceRecog.onend = () => {
                     this.numberedVoiceRecog._isRunning = false;
-                    // Si el modo sigue activo, reiniciar el reconocimiento con guard
+                    console.log('[A11Y-DEBUG] Reconocimiento terminado');
+                    
+                    // Reiniciar si el modo sigue activo
                     if (this.numberedVoiceMode && this.numberedVoiceRecog) {
                         try {
                             setTimeout(() => {
                                 if (this.numberedVoiceMode && this.numberedVoiceRecog && !this.numberedVoiceRecog._isRunning) {
+                                    console.log('[A11Y-DEBUG] Reiniciando reconocimiento...');
                                     this.numberedVoiceRecog.start();
                                 }
                             }, 100);
-                        } catch (e) { console.log('[A11Y-DEBUG] Error restarting recognition:', e); }
+                        } catch (e) { 
+                            console.log('[A11Y-DEBUG] Error al reiniciar:', e); 
+                        }
                     }
                 };
 
                 this.numberedVoiceRecog.start();
+                console.log('[A11Y-DEBUG] Reconocimiento iniciado');
 
-                // MEJORADO: Monitorear cambios de modales mientras el modo de voz está activo
+                // Monitorear cambios en modales mientras el modo de voz está activo
                 this.startModalMonitoringForVoiceMode();
             } catch (e) {
-                console.warn('No se pudo iniciar reconocimiento numerado:', e);
+                console.warn('[A11Y-DEBUG] Error al iniciar reconocimiento:', e);
                 if (this.numberedVoiceRecog) {
                     this.numberedVoiceRecog._isRunning = false;
                 }
@@ -1507,101 +1534,267 @@
             return modalIndexMap;
         }
         
-        // MEJORADO: buildReadableElementsList()
-        buildReadableElementsList() {
-            // Reusar selector amplio para la lectura normal
-            const baseSelector = 'p, li, h1, h2, h3, h4, h5, h6, button, a, img[alt], [data-a11y-readable]';
-            const formSelector = 'input[type="text"], input[type="email"], input[type="password"], input[type="search"], input[type="number"], textarea, select, [role="button"]';
-            const educationSelector = 'table, fieldset, legend, .question, .quiz, .form-group, [data-a11y-form], .modal-content, [role="dialog"]';
-            const mediaSelector = 'audio, video';
-            const sliderSelector = '.swiper, .carousel, [role="region"][aria-roledescription="carousel"]';
-            const containerSelector = '.card, .alert, .well, [role="region"]';
+        /**
+         * Agrupar elementos de texto consecutivos bajo un solo badge (optimizado tipo Annyang)
+         * VERSIÓN AGRESIVA: Ignora elementos menores (span, b, i, etc.) y agrupa sin límite de caracteres
+         * Idea: h1 + p + p + span + p = 1 badge (ignora span), ul + lis = 1 badge, etc.
+         */
+        groupConsecutiveTextElements(elements) {
+            const groups = [];
+            const processed = new Set();
 
-            const fullSelector = `${baseSelector}, ${formSelector}, ${educationSelector}, ${mediaSelector}, ${sliderSelector}, ${containerSelector}`;
+            // Elementos que SIEMPRE tienen badge individual (no se agrupan)
+            const alwaysIndividual = [
+                'button', 'input', 'textarea', 'select', 
+                'audio', 'video', 'a', 'table', 'img'
+            ];
+
+            // Elementos "menores" que se IGNORAN (no rompen agrupación, no se procesan como elementos)
+            const ignoreElements = [
+                'span', 'b', 'i', 'strong', 'em', 'br', 'hr',
+                'small', 'mark', 'code', 'kbd', 'samp', 'var',
+                'sub', 'sup', 'ins', 'del', 'u', 's'
+            ];
+
+            elements.forEach((el, idx) => {
+                if (processed.has(el)) return;
+
+                const tag = el.tagName.toLowerCase();
+                
+                // Si es un elemento que se ignora, saltarlo (no procesarlo)
+                if (ignoreElements.includes(tag)) {
+                    return;
+                }
+
+                // Si es elemento individual obligatorio
+                if (alwaysIndividual.includes(tag)) {
+                    groups.push({
+                        type: 'single',
+                        elements: [el],
+                        representative: el
+                    });
+                    processed.add(el);
+                    return;
+                }
+
+                // Para headings, agrupar AGRESIVAMENTE con elementos siguientes
+                if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+                    const group = [el];
+                    processed.add(el);
+
+                    // Buscar elementos de texto que sigan al heading - SIN LÍMITE DE CARACTERES
+                    let currentIdx = idx + 1;
+                    while (currentIdx < elements.length) {
+                        const nextEl = elements[currentIdx];
+                        
+                        // Si ya fue procesado, parar
+                        if (processed.has(nextEl)) break;
+
+                        const nextTag = nextEl.tagName.toLowerCase();
+                        
+                        // Ignorar elementos menores (no agregarlos al grupo, solo saltarlos)
+                        if (ignoreElements.includes(nextTag)) {
+                            currentIdx++;
+                            continue;
+                        }
+                        
+                        // Si es otro heading diferente, parar aquí
+                        if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(nextTag)) {
+                            break;
+                        }
+
+                        // Incluir p, li, ul, ol, div, label, fieldset que sigan al heading
+                        // SIN LÍMITE DE CARACTERES - agrupa todo
+                        if (['p', 'li', 'ul', 'ol', 'div', 'label', 'fieldset'].includes(nextTag)) {
+                            group.push(nextEl);
+                            processed.add(nextEl);
+                            currentIdx++;
+                        } else if (alwaysIndividual.includes(nextTag)) {
+                            // Si encontramos un botón/input, parar aquí
+                            break;
+                        } else {
+                            // Otro elemento desconocido, parar
+                            break;
+                        }
+                    }
+
+                    groups.push({
+                        type: 'group',
+                        elements: group,
+                        representative: el // usar el heading como representante
+                    });
+                    return;
+                }
+
+                // Para ul/ol, agrupar todos sus lis internos
+                if (['ul', 'ol'].includes(tag)) {
+                    const listItems = Array.from(el.querySelectorAll(':scope > li'))
+                        .filter(li => !processed.has(li));
+                    
+                    const group = [el, ...listItems];
+                    group.forEach(e => processed.add(e));
+
+                    groups.push({
+                        type: 'group',
+                        elements: group,
+                        representative: el
+                    });
+                    return;
+                }
+
+                // Para párrafos y divs sueltos que no fueron agrupados
+                if (['p', 'div'].includes(tag)) {
+                    groups.push({
+                        type: 'single',
+                        elements: [el],
+                        representative: el
+                    });
+                    processed.add(el);
+                    return;
+                }
+
+                // Para otros elementos (fallback)
+                groups.push({
+                    type: 'single',
+                    elements: [el],
+                    representative: el
+                });
+                processed.add(el);
+            });
+
+            return groups;
+        }
+
+        // MEJORADO: buildReadableElementsList() - Versión optimizada con agrupación AGRESIVA
+        // Captura todos los elementos interactivos y legibles de la página
+        // Ignora elementos menores (span, b, i) que no rompen agrupación
+        buildReadableElementsList() {
+            // ESTRATEGIA INTELIGENTE: SOLO headings + elementos interactivos
+            // Los párrafos/contenido se IGNORAN (no son badges)
+            // Esto replica el patrón de Annyang donde solo headings y botones tienen badges
+            const selectors = [
+                // HEADINGS - SIEMPRE tienen badge
+                'h1, h2, h3, h4, h5, h6',
+                
+                // ELEMENTOS INTERACTIVOS - SIEMPRE tienen badge
+                'button, a[href]',
+                'input[type="button"], input[type="submit"], input[type="text"], input[type="email"], input[type="password"], input[type="search"], input[type="number"], input[type="tel"]',
+                'textarea, select',
+                '[role="button"], [role="link"], [role="tab"]',
+                
+                // MEDIA
+                'audio, video',
+                
+                // TABLAS
+                'table',
+                
+                // ELEMENTOS ESTRUCTURALES ESPECIALES
+                'fieldset',
+                
+                // CONTENIDO SOLO SI TIENE ATRIBUTO ESPECIAL
+                '[data-a11y-readable], [data-interactive="true"]'
+            ];
+
+            const fullSelector = selectors.join(', ');
 
             // Mantener readableElements para otras funcionalidades (array de elementos DOM)
             this.readableElements = Array.from(document.querySelectorAll(fullSelector))
                 .filter(el => {
+                    // Excluir elementos del widget mismo
                     if (el.closest && el.closest('#accessibility-widget')) return false;
-                    // CRÍTICO: Excluir elementos dentro del menú (#menu-item)
+                    
+                    // Excluir elementos del menú
                     if (el.closest && el.closest('#menu-item')) return false;
+                    
+                    // Respetar atributo data-a11y-read="false"
                     if (el.dataset && el.dataset.a11yRead === 'false') return false;
+                    
+                    // Excluir aria-hidden
                     if (el.hasAttribute && el.hasAttribute('aria-hidden') && el.getAttribute('aria-hidden') === 'true') return false;
+                    
+                    // Excluir hidden
                     if (el.hidden) return false;
+                    
+                    // Excluir elementos dentro de aria-hidden
                     let p = el.parentElement;
                     while (p) {
                         if (p.hasAttribute && p.hasAttribute('aria-hidden') && p.getAttribute('aria-hidden') === 'true') return false;
                         p = p.parentElement;
                     }
+                    
+                    // Excluir elementos no renderizados
                     if (el.offsetParent === null) return false;
+                    
+                    // Excluir elementos con display:none, visibility:hidden, opacity:0
                     try {
                         const st = window.getComputedStyle(el);
-                        if (st && (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0)) return false;
+                        if (st && (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity) === 0)) {
+                            return false;
+                        }
                     } catch (e) { /* ignore */ }
+                    
                     return true;
                 });
 
-            // Construir un mapeo numerado global que incluya opciones de select
+            // Construir mapeo numerado directamente (sin agrupación, ya hemos sido selectivos)
             this.numberedIndexMap = [];
             let counter = 1; // empezamos en 1 (0 reservado para el widget toggle)
             const seen = new WeakSet();
+
             this.readableElements.forEach(el => {
-                // Evitar numerar controles dentro del propio widget
-                if (el.closest && el.closest('#accessibility-widget')) return;
-                
-                // CRÍTICO: Evitar numerar elementos dentro del menú
-                if (el.closest && el.closest('#menu-item')) return;
-
-                // Saltar si alguno de sus ancestros ya fue numerado
-                let p = el.parentElement;
-                let skip = false;
-                while (p) {
-                    if (seen.has(p)) { skip = true; break; }
-                    p = p.parentElement;
-                }
-                if (skip) return;
-
                 const tag = el.tagName.toLowerCase();
-                
+
+                // Evitar duplicados
+                if (seen.has(el)) return;
+
                 // Obtener texto del elemento
-                let elementText = this.getElementTextWithoutBadge(el) || el.innerText || el.alt || '';
-                
-                // FILTRO CRUCIAL: Para inputs/textareas, buscar contenido real (no solo placeholder)
+                let elementText = this.getElementTextWithoutBadge(el) || el.innerText || el.alt || el.title || '';
+                elementText = elementText.trim();
+
+                // IMPORTANTE: Para inputs/textareas, intentar encontrar label asociado
                 if ((tag === 'input' || tag === 'textarea') && !elementText) {
-                    // Intentar encontrar label por id
+                    // Buscar label por id
                     if (el.id) {
                         const label = document.querySelector(`label[for="${el.id}"]`);
                         if (label) {
                             elementText = label.textContent.trim();
                         }
                     }
-                    // Si aún no hay texto, buscar párrafo o texto en elemento padre cercano
-                    if (!elementText) {
-                        let parent = el.parentElement;
-                        let depth = 0;
-                        while (parent && depth < 3) {
-                            const nearbyText = parent.querySelector('p:not(.sr-only), span:not(.sr-only), label');
-                            if (nearbyText && nearbyText !== el) {
-                                elementText = nearbyText.textContent.trim();
-                                if (elementText) break;
-                            }
-                            parent = parent.parentElement;
-                            depth++;
+
+                    // Si aún no hay texto, buscar en elemento padre
+                    if (!elementText && el.parentElement) {
+                        const parentText = el.parentElement.innerText;
+                        if (parentText && parentText.length < 200) {
+                            elementText = parentText.replace(el.value || '', '').trim();
                         }
                     }
-                    
-                    // Si NO tiene contenido legible, IGNORAR COMPLETAMENTE
+
+                    // Si NO tiene contenido legible, IGNORAR
                     if (!elementText) {
-                        return; // Saltar, no numerar ni leer
+                        return;
                     }
                 }
 
-                // Marcar como visto y agregar entry para el elemento
+                // IMPORTANTE: Excluir elementos sin texto legible (excepto img/audio/video)
+                if (!elementText && tag !== 'img' && tag !== 'audio' && tag !== 'video') {
+                    return;
+                }
+
+                // Marcar como visto
                 seen.add(el);
-                
-                this.numberedIndexMap.push({ number: counter++, type: 'element', el: el, text: elementText });
-                // Nota: ya no añadimos select-option entries porque usamos navegación con flechas en su lugar
+
+                // Agregar al mapeo
+                this.numberedIndexMap.push({
+                    number: counter++,
+                    type: 'element',
+                    el: el,
+                    text: elementText,
+                    groupType: 'single',
+                    groupElements: [el]
+                });
             });
+
+            console.log(`[A11Y-DEBUG] buildReadableElementsList: ${this.numberedIndexMap.length} elementos detectados (ESTRATEGIA SELECTIVA: solo headings + interactivos)`);
         }
         
         // Encontrar label asociado a un input
